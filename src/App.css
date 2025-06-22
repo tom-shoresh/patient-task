@@ -1,0 +1,828 @@
+:root {
+  --color-bg-main: #F9F6F1;
+  --color-bg-panel: #F5EEDC;
+  --color-bg-card: #F7F3E9;
+  --color-border: #CBB994;
+  --color-primary: #8D7350; /* חום פסטלי */
+  --color-secondary: #E6D97A; /* צהוב פסטלי */
+  --color-accent: #A3B18A; /* ירוק זית פסטלי */
+  --color-btn: #B6A16B;
+  --color-btn-hover: #8D7350;
+  --color-divider: #CBB994;
+  --color-text: #4E342E;
+  --color-card-shadow: #e6e0d2;
+}
+
+body, .app-root {
+  background: var(--color-bg-main) !important;
+  color: var(--color-text) !important;
+}
+
+.routine-tasks-panel, .patients-list-panel {
+  background: var(--color-bg-panel) !important;
+  box-shadow: 0 2px 8px var(--color-card-shadow);
+}
+
+.added-task-block {
+  background: var(--color-bg-card) !important;
+  border: 1px solid var(--color-border) !important;
+}
+
+.routine-task-card {
+  background: var(--color-bg-card) !important;
+  border: none;
+}
+
+.routine-tasks-title, .patients-list-title {
+  color: var(--color-primary, #8D7350) !important;
+}
+
+.routine-tasks-divider {
+  border-top: 2px solid var(--color-divider) !important;
+}
+
+button, .dq-btn {
+  background: var(--color-btn) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 3px !important;
+  transition: background 0.2s;
+  font-size: 1.1em;
+  padding: 0.3em 1.2em;
+  margin: 0 0.5em;
+  cursor: pointer;
+  text-align: right;
+  direction: rtl;
+}
+button:hover, .dq-btn:hover {
+  background: var(--color-btn-hover) !important;
+}
+
+input, .patient-form input {
+  background: #FFF8F2 !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+.add-patient-bar {
+  background: var(--color-bg-panel) !important;
+}
+
+.app-root {
+  font-family: "Assistant", "Alef", "Noto Sans Hebrew", Arial, sans-serif;
+  direction: rtl;
+  text-align: right;
+  display: flex;
+  flex-direction: row;
+  min-height: 100vh;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+button, .dq-btn {
+  font-size: 1.1em;
+  padding: 0.3em 1.2em;
+  margin: 0 0.5em;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+  text-align: right;
+  direction: rtl;
+}
+button:disabled, .dq-btn:disabled {
+  background: #cccccc;
+  cursor: not-allowed;
+}
+
+.patient-form label {
+  display: block;
+  margin-bottom: 1em;
+  text-align: right;
+  direction: rtl;
+}
+
+.patient-card {
+  direction: rtl;
+  text-align: right;
+}
+
+.tasks-list > div {
+  margin-bottom: 1em;
+}
+
+.added-tasks {
+  margin-top: 2em;
+}
+
+.added-task-block {
+  padding: 1em 1.2em;
+  direction: rtl;
+}
+
+/* כותרת משימה ראשית */
+.added-task-block > div:first-child {
+  background: var(--color-secondary, #E6D97A) !important;
+  color: var(--color-primary, #8D7350) !important;
+  border-radius: 5px;
+  padding: 0.4em 0.7em;
+  margin-bottom: 0.5em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  direction: rtl;
+}
+
+/* אייקון collapse */
+.added-task-block span {
+  font-size: 1.2em;
+  margin-left: 0.7em;
+  color: var(--color-primary, #8D7350);
+  user-select: none;
+}
+
+/* צ'קבוקס ראשי */
+.added-task-block input[type="checkbox"] {
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 2px !important;
+  border: 1.5px solid #111 !important;
+  background: #fff !important;
+  cursor: pointer !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  outline: none !important;
+  display: inline-block !important;
+  position: relative !important;
+  vertical-align: middle !important;
+}
+.added-task-block input[type="checkbox"]:checked {
+  background: #111 !important;
+  border-color: #111 !important;
+}
+.added-task-block input[type="checkbox"]:checked:after {
+  content: "";
+  display: block;
+  position: absolute;
+  top: 2.5px;
+  right: 4.5px;
+  width: 5px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  border-radius: 0.5px;
+  transform: rotate(45deg);
+  z-index: 2;
+}
+
+.subtasks {
+  margin: 0.5em 1.5em 0 0;
+  padding: 0;
+  text-align: right;
+  direction: rtl;
+}
+
+.subtasks li {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.3em;
+  direction: rtl;
+  padding-right: 1.5em;
+}
+
+.subtasks input[type="checkbox"] {
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 2px !important;
+  border: 1.5px solid #111 !important;
+  background: #fff !important;
+  cursor: pointer !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  outline: none !important;
+  display: inline-block !important;
+  position: relative !important;
+  vertical-align: middle !important;
+}
+.subtasks input[type="checkbox"]:checked {
+  background: #111 !important;
+  border-color: #111 !important;
+}
+.subtasks input[type="checkbox"]:checked:after {
+  content: "";
+  display: block;
+  position: absolute;
+  top: 2.5px;
+  right: 4.5px;
+  width: 5px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  border-radius: 0.5px;
+  transform: rotate(45deg);
+  z-index: 2;
+}
+
+.strike {
+  text-decoration: line-through;
+  color: #888;
+}
+
+.dynamic-questions {
+  margin: 2em 0 1em 0;
+  padding: 1.2em 1em;
+  background: #f7f7fa;
+  border: 1px solid #d0d0e0;
+  border-radius: 10px;
+  text-align: right;
+  direction: rtl;
+  font-family: inherit;
+}
+
+.dq-btn {
+  display: block;
+  width: 100%;
+  margin: 0.5em 0;
+  padding: 0.7em 1em;
+  font-size: 1.1em;
+  cursor: pointer;
+  text-align: right;
+  direction: rtl;
+}
+.dq-btn:hover {
+  background: #d0d0e0;
+}
+
+.routine-tasks-panel {
+  min-width: 260px;
+  max-width: 320px;
+  padding: 28px 20px 20px 12px;
+  border-radius: 0 0 16px 16px;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  direction: rtl;
+  text-align: right;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.main-content {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 32px 32px 32px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  direction: rtl;
+  background: none;
+  max-width: 900px;
+}
+
+.patients-list-panel {
+  min-width: 220px;
+  max-width: 300px;
+  padding: 24px 12px 20px 20px;
+  border-radius: 0 0 16px 16px;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  direction: rtl;
+  text-align: right;
+  overflow: auto;
+  box-sizing: border-box;
+}
+
+.patients-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.patient-card-mini.selected {
+  background: #e3f2fd !important;
+  border-color: #1976d2 !important;
+}
+
+@media (max-width: 1200px) {
+  .main-content {
+    max-width: 100vw;
+    padding: 24px 8px 24px 0;
+  }
+  .routine-tasks-panel, .patients-list-panel {
+    min-width: 160px;
+    max-width: 200px;
+    padding: 16px 6px 12px 6px;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-root {
+    flex-direction: column;
+  }
+  .routine-tasks-panel, .patients-list-panel {
+    position: static;
+    width: 100%;
+    max-width: 100vw;
+    border-radius: 0;
+    height: auto;
+    margin-bottom: 0;
+    box-shadow: none;
+    padding: 20px 8px;
+  }
+  .main-content {
+    padding: 16px 8px 16px 0;
+    max-width: 100vw;
+  }
+  .resize-handle {
+    height: 40vw;
+    min-height: 120px;
+  }
+}
+
+.routine-tasks-panel ul {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.routine-tasks-panel li {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  direction: rtl;
+}
+
+.routine-tasks-panel input[type="checkbox"] {
+  margin-left: 0;
+  margin-right: 8px;
+}
+
+.routine-tasks-panel .strike {
+  text-decoration: line-through;
+  color: #888;
+}
+
+.text-right {
+  text-align: right;
+  direction: rtl;
+}
+
+.patients-list-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  direction: rtl;
+  text-align: right;
+}
+
+@media (max-width: 900px) {
+  .patients-list-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .patients-list-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.archived-list-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  direction: rtl;
+  text-align: right;
+}
+@media (max-width: 900px) {
+  .archived-list-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .archived-list-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.patient-card-mini {
+  border: 1.5px solid #ccc !important;
+  border-radius: 16px !important;
+  background: #fffbea !important;
+  box-shadow: 0 2px 8px #e6e0d2;
+  padding: 32px 18px 36px 18px !important;
+  margin: 0 auto 0 auto;
+  direction: rtl;
+  text-align: right;
+  min-width: 180px;
+  max-width: 260px;
+  min-height: 220px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.patients-list-grid .three-dots, .three-dots {
+  color: var(--color-primary, #8D7350) !important;
+}
+
+.patients-list-grid .card-title-ellipsis {
+  font-weight: bold;
+  font-size: 20px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+  padding: 0;
+  line-height: 1.15;
+  direction: rtl;
+}
+
+.patients-list-grid .patient-affiliation {
+  font-size: 15px !important;
+  color: #333 !important;
+  opacity: 0.9 !important;
+  margin-top: 2px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+}
+
+.patient-card-mini .circle-progress-main {
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.card-menu-btn-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  position: relative;
+  margin-bottom: 2px;
+}
+
+.card-menu-btn, .three-dots {
+  color: #111 !important;
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  font-size: 20px !important;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 20;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  margin: 0 0 0 4px;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.card-menu-btn:hover, .three-dots:hover {
+  color: #111 !important;
+  background: #ececec !important;
+}
+
+.card-header-row {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  position: relative;
+  margin-bottom: 2px;
+  direction: rtl;
+  padding-right: 0;
+}
+
+.card-menu-btn {
+  position: absolute !important;
+  top: 8px !important;
+  right: 8px !important;
+  z-index: 2;
+}
+
+.card-header-row > div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  width: 100%;
+  padding-right: 36px;
+}
+
+.card-title-ellipsis {
+  font-weight: bold;
+  font-size: 28px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+  padding: 0;
+  line-height: 1.15;
+  direction: rtl;
+}
+
+.patient-affiliation {
+  font-size: 15px !important;
+  color: #333 !important;
+  opacity: 0.9 !important;
+  margin-top: 2px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+}
+
+@media (max-width: 600px) {
+  .card-menu-btn {
+    min-width: 28px;
+    min-height: 28px;
+    font-size: 18px;
+  }
+}
+
+.resize-handle {
+  width: 8px;
+  min-width: 8px;
+  max-width: 12px;
+  background: transparent;
+  cursor: ew-resize;
+  transition: background 0.15s;
+  z-index: 10;
+  height: 100vh;
+  position: relative;
+  user-select: none;
+  touch-action: none;
+}
+.resize-handle:hover, .resize-handle:active {
+  background: #bbdefb;
+}
+.resize-handle.right {
+  border-left: 2px solid #e0e0e0;
+  margin-left: -4px;
+}
+.resize-handle.left {
+  border-right: 2px solid #e0e0e0;
+  margin-right: -4px;
+}
+
+/* --- כרטיסיות תיקים (כלליות) --- */
+.card.selected, .patient-card-mini.selected, .card.archived.selected, .patient-card-mini.archived.selected {
+  background: #ffe0b2 !important;
+  border-color: #8D7350 !important;
+  color: #111 !important;
+  font-weight: bold !important;
+}
+.card, .patient-card-mini, .card.archived, .patient-card-mini.archived {
+  background: #fff6e0 !important;
+  border: 1.5px solid #ccc !important;
+  border-radius: 12px !important;
+  font-family: 'Calibri', Arial, sans-serif !important;
+  color: #111 !important;
+  box-sizing: border-box;
+  box-shadow: none !important;
+  padding: 12px 16px 36px 16px !important;
+  margin: 0 !important;
+  transition: background 0.2s, border-color 0.2s;
+}
+.card-header-row {
+  width: 100%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: 2px;
+  direction: rtl;
+  position: relative;
+}
+
+.archive-icon {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  width: 22px;
+  height: 22px;
+  opacity: 1;
+  pointer-events: none;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+}
+
+.archive-circle-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+.archive-circle-row .archive-icon {
+  position: static;
+  width: 20px;
+  height: 20px;
+  color: #c62828;
+  opacity: 1;
+  z-index: 1;
+  background: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 600px) {
+  .archive-circle-row .archive-icon {
+    width: 16px;
+    height: 16px;
+  }
+  .archive-circle-row .circle-progress {
+    width: 44px !important;
+    height: 44px !important;
+  }
+}
+
+/* כרטיס משימה שוטפת */
+.routine-task-card {
+  padding: 0.5em 0;
+  margin-bottom: 0.5em;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  direction: rtl;
+  box-shadow: none;
+  border: none;
+  background: none;
+  gap: 16px;
+}
+
+.routine-task-checkbox {
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 2px !important;
+  border: 1.5px solid #111 !important;
+  background: #fff !important;
+  margin-right: 0;
+  cursor: pointer !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  outline: none !important;
+  display: inline-block !important;
+  position: relative !important;
+  vertical-align: middle !important;
+}
+.routine-task-checkbox:checked {
+  background: #111 !important;
+  border-color: #111 !important;
+}
+.routine-task-checkbox:checked:after {
+  content: "";
+  display: block;
+  position: absolute;
+  top: 2.5px;
+  right: 4.5px;
+  width: 5px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  border-radius: 0.5px;
+  transform: rotate(45deg);
+  z-index: 2;
+}
+
+.routine-task-label {
+  flex: 1;
+  font-size: 1.08em;
+  color: #222;
+  font-weight: 500;
+  text-align: right;
+  user-select: none;
+  direction: rtl;
+}
+.routine-task-label.strike {
+  text-decoration: line-through;
+  color: #888;
+}
+
+.routine-tasks-title {
+  font-size: 1.25em;
+  font-weight: bold;
+  margin-bottom: 0.5em;
+  margin-top: 0;
+  text-align: right;
+  direction: rtl;
+}
+.routine-tasks-divider {
+  border: none;
+  border-top: 2px solid #eee;
+  margin: 0 0 1.2em 0;
+}
+
+.tasks-list input[type="checkbox"] {
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 2px !important;
+  border: 1.5px solid #111 !important;
+  background: #fff !important;
+  cursor: pointer !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  outline: none !important;
+  display: inline-block !important;
+  position: relative !important;
+  vertical-align: middle !important;
+}
+.tasks-list input[type="checkbox"]:checked {
+  background: #111 !important;
+  border-color: #111 !important;
+}
+.tasks-list input[type="checkbox"]:checked:after {
+  content: "";
+  display: block;
+  position: absolute;
+  top: 2.5px;
+  right: 4.5px;
+  width: 5px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  border-radius: 0.5px;
+  transform: rotate(45deg);
+  z-index: 2;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+/* עיגול אחוזי התקדמות בכרטיסיות */
+.patients-list-panel .circle-progress-main svg circle:nth-child(2),
+.patients-list .circle-progress-main svg circle:nth-child(2) {
+  stroke: var(--color-accent, #A3B18A) !important;
+}
+.patients-list-panel .circle-progress-main svg text,
+.patients-list .circle-progress-main svg text {
+  fill: var(--color-primary, #8D7350) !important;
+}
+
+.patient-card-mini, .card, .card-header-row, .card-title-ellipsis, .patient-affiliation {
+  text-align: right !important;
+  direction: rtl !important;
+}
+.card-header-row > div, .card-title-ellipsis, .patient-affiliation {
+  align-items: flex-end !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.patient-card .circle-progress-main {
+  margin: 0 auto;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.three-dots {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font-size: 22px;
+  color: #1976d2;
+  user-select: none;
+}
