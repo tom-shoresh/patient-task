@@ -4,7 +4,7 @@ import { getFirestore } from "firebase/firestore";
 import { getAuth, signInAnonymously } from "firebase/auth";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyDGbVAydzb3DT50khR-dfmLOnd7mWhGHaw",
+    apiKey: "AIzaSyBo61Xx4L-qmQBvAtZCsFitmZwqBgGhnHM",
     authDomain: "psych-office-tasks.firebaseapp.com",
     projectId: "psych-office-tasks",
     storageBucket: "psych-office-tasks.firebasestorage.app",

@@ -6,8 +6,11 @@ import DecisionTreeEditor from "./DecisionTreeEditor";
 import RoutineTasksEditor from "./RoutineTasksEditor";
 import MainTasksEditor from "./MainTasksEditor";
 import { FaArchive } from 'react-icons/fa';
+import { FaHome } from 'react-icons/fa';
+import { FaCog } from 'react-icons/fa';
 import PatientsListPanel from "./PatientsListPanel";
 import { getAppData, setAppData as setAppDataFirestore, getPatients, addPatient, updatePatient, deletePatient as deletePatientFromApi, getRoutineStatus, setRoutineStatus } from "./firebaseApi";
+import mermaidLogo from "./assets/mermaid_logo.png.png";
 
 // משפטים אקראיים לתצוגה כאשר אין תיק נבחר
 const idleQuotes = [
@@ -180,10 +183,14 @@ const idleQuotes = [
 
 // פונקציה לטעינת נתונים מ-Firestore (במקום מ-GitHub)
 const fetchAppData = async () => {
+  console.log('🔄 fetchAppData started');
   try {
+    console.log('📥 Calling getAppData...');
     const data = await getAppData();
+    console.log('✅ getAppData returned:', data);
     return data;
   } catch (err) {
+    console.error('❌ Error in fetchAppData:', err);
     throw new Error("שגיאה בטעינת נתוני workflow/main מ-Firestore: " + err.message);
   }
 };
@@ -324,13 +331,23 @@ export default function App() {
     setAppDataFirestore(newData);
   };
 
-  // פונקציות עריכה לעץ החלטות
+  // שימוש ב-decisionTrees כאובייקט
+  // נבחר עץ ברירת מחדל ("default") אם אין בחירה
+  const getCurrentDecisionTree = () => {
+    if (appData?.decisionTrees) {
+      const keys = Object.keys(appData.decisionTrees);
+      if (selectedTreeId && appData.decisionTrees[selectedTreeId]) return appData.decisionTrees[selectedTreeId];
+      if (keys.length > 0) return appData.decisionTrees[keys[0]];
+    }
+    return appData?.decisionTree;
+  };
+
   const updateDecisionTree = (updatedTree) => {
-    if (!appData) return;
-    const newData = {
-      ...appData,
-      decisionTree: updatedTree
-    };
+    if (!appData || !selectedTreeId) return;
+    let newData = { ...appData };
+    if (appData.decisionTrees) {
+      newData.decisionTrees = { ...appData.decisionTrees, [selectedTreeId]: updatedTree };
+    }
     setAppData(newData);
     setAppDataFirestore(newData);
   };
@@ -338,16 +355,21 @@ export default function App() {
   // טעינת נתונים מ-Firestore (במקום מ-GitHub)
   useEffect(() => {
     const loadData = async () => {
+      console.log('🔄 loadData started');
       try {
         setLoading(true);
+        console.log('📥 Fetching app data...');
         const data = await fetchAppData();
+        console.log('✅ App data fetched:', data);
         setAppData(data);
         setError(null);
+        console.log('✅ App data set successfully');
       } catch (err) {
+        console.error('❌ Error loading data:', err);
         setError(`שגיאה בטעינת נתונים מ-Firestore: ${err.message}`);
-        console.error('שגיאה בטעינת נתונים:', err);
       } finally {
         setLoading(false);
+        console.log('🏁 loadData completed');
       }
     };
     
@@ -380,18 +402,29 @@ export default function App() {
       title: "הפניה ליועץ חיצוני",
       subtasks: [],
     },
-    ...appData.mainTasks,
-    // הוספת משימות מעץ ההחלטות רק אם הן לא קיימות כבר ב-mainTasks
-    ...appData.decisionTree.finalTasks
-      .filter(taskTitle => !appData.mainTasks.some(mainTask => mainTask.title === taskTitle))
-      .map(taskTitle => ({
-        title: taskTitle,
-        subtasks: []
-      }))
+    ...appData.mainTasks
   ] : [];
 
-  // מערך של המשימות הסופיות מעץ ההחלטות
-  const decisionSubtasks = appData ? appData.decisionTree.finalTasks : [];
+  // מערך של המשימות הסופיות מעץ ההחלטות - נבנה דינמית מהעץ
+  const decisionSubtasks = appData ? (() => {
+    const tasks = new Set();
+    const extract = (node) => {
+      if (!node) return;
+      if (node.finalTask) {
+        tasks.add(node.finalTask);
+      }
+      if (node.options) {
+        node.options.forEach(opt => extract(opt));
+      }
+      if (node.nextQuestion) {
+        extract(node.nextQuestion);
+      }
+    };
+    if (appData.decisionTrees) {
+      Object.values(appData.decisionTrees).forEach(tree => extract(tree));
+    }
+    return Array.from(tasks);
+  })() : [];
 
   const handleFormChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -420,6 +453,134 @@ export default function App() {
     setCollapsed((prev) => ({ ...prev, [taskTitle]: !prev[taskTitle] }));
   };
 
+  // --- סטייטים עיקריים ---
+  const selectedTasksRef = useRef(selectedTasks);
+  const taskSubtasksRef = useRef(taskSubtasks);
+  const collapsedRef = useRef(collapsed);
+
+  useEffect(() => { selectedTasksRef.current = selectedTasks; }, [selectedTasks]);
+  useEffect(() => { taskSubtasksRef.current = taskSubtasks; }, [taskSubtasks]);
+  useEffect(() => { collapsedRef.current = collapsed; }, [collapsed]);
+
+  // פונקציה אחידה להוספה/עדכון/הסרה של משימה לתיק
+  const addOrUpdateTaskToPatient = async (taskTitle, action = 'add', options = {}) => {
+    console.log('🔍 addOrUpdateTaskToPatient called:', { taskTitle, action, options });
+    if (!patient) {
+      console.log('❌ No patient selected');
+      return;
+    }
+    
+    const task = allTasks.find(t => t.title === taskTitle);
+    if (!task) {
+      console.log('❌ Task not found:', taskTitle);
+      return;
+    }
+    
+    // שימוש בסטייטים הכי עדכניים
+    const selectedTasks = selectedTasksRef.current;
+    const taskSubtasks = taskSubtasksRef.current;
+    const collapsed = collapsedRef.current;
+    
+    let newSelectedTasks, newTaskSubtasks, newCollapsed;
+    
+    switch (action) {
+      case 'add':
+        if (selectedTasks.includes(taskTitle)) {
+          console.log('⚠️ Task already exists:', taskTitle);
+          return;
+        }
+        newSelectedTasks = [...selectedTasks, taskTitle];
+        newTaskSubtasks = { ...taskSubtasks };
+        if (task.subtasks.length > 0) {
+          newTaskSubtasks[taskTitle] = Array(task.subtasks.length).fill(false);
+        } else {
+          newTaskSubtasks[taskTitle] = [false];
+        }
+        newCollapsed = { ...collapsed, [taskTitle]: false };
+        if (taskTitle === "שיבוץ לפמי" && !newSelectedTasks.includes("הפניה חדשה")) {
+          newSelectedTasks = [...newSelectedTasks, "הפניה חדשה"];
+          const t = allTasks.find(t => t.title === "הפניה חדשה");
+          if (t) {
+            newTaskSubtasks["הפניה חדשה"] = Array(t.subtasks.length).fill(false);
+            newCollapsed["הפניה חדשה"] = false;
+          }
+        }
+        console.log('✅ ADD - New state:', { newSelectedTasks, newTaskSubtasks, newCollapsed });
+        break;
+      case 'remove':
+        newSelectedTasks = selectedTasks.filter((t) => t !== taskTitle);
+        newTaskSubtasks = { ...taskSubtasks };
+        delete newTaskSubtasks[taskTitle];
+        newCollapsed = { ...collapsed };
+        delete newCollapsed[taskTitle];
+        console.log('✅ REMOVE - New state:', { newSelectedTasks, newTaskSubtasks, newCollapsed });
+        break;
+      case 'check':
+        newSelectedTasks = selectedTasks.includes(taskTitle) ? selectedTasks : [...selectedTasks, taskTitle];
+        newTaskSubtasks = { ...taskSubtasks };
+        if (task.subtasks.length > 0) {
+          newTaskSubtasks[taskTitle] = Array(task.subtasks.length).fill(true);
+        } else {
+          newTaskSubtasks[taskTitle] = [true];
+        }
+        newCollapsed = { ...collapsed, [taskTitle]: true };
+        if (taskTitle === "שיבוץ לפמי" && !newSelectedTasks.includes("הפניה חדשה")) {
+          newSelectedTasks = [...newSelectedTasks, "הפניה חדשה"];
+          const t = allTasks.find(t => t.title === "הפניה חדשה");
+          if (t) {
+            newTaskSubtasks["הפניה חדשה"] = Array(t.subtasks.length).fill(true);
+            newCollapsed["הפניה חדשה"] = true;
+          }
+        }
+        console.log('✅ CHECK - New state:', { newSelectedTasks, newTaskSubtasks, newCollapsed });
+        break;
+      case 'uncheck':
+        newSelectedTasks = selectedTasks;
+        newTaskSubtasks = { ...taskSubtasks };
+        if (task.subtasks.length > 0) {
+          newTaskSubtasks[taskTitle] = Array(task.subtasks.length).fill(false);
+        } else {
+          newTaskSubtasks[taskTitle] = [false];
+        }
+        newCollapsed = { ...collapsed, [taskTitle]: false };
+        console.log('✅ UNCHECK - New state:', { newSelectedTasks, newTaskSubtasks, newCollapsed });
+        break;
+      case 'updateSubtask':
+        const { subtaskIndex, checked } = options;
+        newSelectedTasks = selectedTasks;
+        newTaskSubtasks = { ...taskSubtasks };
+        const arr = newTaskSubtasks[taskTitle]?.slice() || [];
+        arr[subtaskIndex] = checked;
+        newTaskSubtasks[taskTitle] = arr;
+        newCollapsed = { ...collapsed };
+        if (arr.length > 0 && arr.every(Boolean)) {
+          newCollapsed[taskTitle] = true;
+        } else {
+          newCollapsed[taskTitle] = false;
+        }
+        console.log('✅ UPDATE SUBTASK - New state:', { newSelectedTasks, newTaskSubtasks, newCollapsed });
+        break;
+      default:
+        console.log('❌ Unknown action:', action);
+        return;
+    }
+    console.log('🔄 Updating local state...');
+    setSelectedTasks(newSelectedTasks);
+    setTaskSubtasks(newTaskSubtasks);
+    setCollapsed(newCollapsed);
+    console.log('💾 Saving to server...');
+    try {
+      await updatePatientTasks({ 
+        selectedTasks: newSelectedTasks, 
+        taskSubtasks: newTaskSubtasks, 
+        collapsed: newCollapsed 
+      });
+      console.log('✅ Save completed successfully');
+    } catch (error) {
+      console.error('❌ Save failed:', error);
+    }
+  };
+
   const handleTaskCheckbox = (task, checked, fromRemoveMenu = false) => {
     if (task.title === "הפניה ליועץ חיצוני") {
       if (checked) {
@@ -429,68 +590,34 @@ export default function App() {
       }
       return;
     }
-    let newSelectedTasks, newTaskSubtasks, newCollapsed;
+    
     if (fromRemoveMenu) {
-      // הסרה מוחלטת של המשימה מהתיק
-      newSelectedTasks = selectedTasks.filter((t) => t !== task.title);
-      newTaskSubtasks = { ...taskSubtasks };
-      delete newTaskSubtasks[task.title];
-      newCollapsed = { ...collapsed };
-      delete newCollapsed[task.title];
+      addOrUpdateTaskToPatient(task.title, 'remove');
     } else if (checked) {
-      // סימון כל תתי-המשימות כמושלמות
-      newSelectedTasks = selectedTasks.includes(task.title) ? selectedTasks : [...selectedTasks, task.title];
-      newTaskSubtasks = { ...taskSubtasks };
-      if (task.subtasks.length > 0) {
-        newTaskSubtasks[task.title] = Array(task.subtasks.length).fill(true);
+      addOrUpdateTaskToPatient(task.title, 'check');
     } else {
-        newTaskSubtasks[task.title] = [true];
-      }
-      newCollapsed = { ...collapsed, [task.title]: true }; // קולאפס אוטומטי
-      if (task.title === "שיבוץ לפמי" && !newSelectedTasks.includes("הפניה חדשה")) {
-        newSelectedTasks = [...newSelectedTasks, "הפניה חדשה"];
-        if (!("הפניה חדשה" in newTaskSubtasks)) {
-          const t = allTasks.find(t => t.title === "הפניה חדשה");
-          newTaskSubtasks["הפניה חדשה"] = Array(t.subtasks.length).fill(true);
-        }
-        newCollapsed["הפניה חדשה"] = true;
-      }
-    } else {
-      // סימון כל תתי-המשימות כלא מושלמות
-      newSelectedTasks = selectedTasks;
-      newTaskSubtasks = { ...taskSubtasks };
-      if (task.subtasks.length > 0) {
-        newTaskSubtasks[task.title] = Array(task.subtasks.length).fill(false);
-      } else {
-        newTaskSubtasks[task.title] = [false];
-      }
-      newCollapsed = { ...collapsed, [task.title]: false }; // אקספנד אוטומטי
+      addOrUpdateTaskToPatient(task.title, 'uncheck');
     }
-    setSelectedTasks(newSelectedTasks);
-    setTaskSubtasks(newTaskSubtasks);
-    setCollapsed(newCollapsed);
-    updatePatientTasks({ selectedTasks: newSelectedTasks, taskSubtasks: newTaskSubtasks, collapsed: newCollapsed });
   };
 
   const handleSubtaskCheckbox = (taskTitle, idx, event) => {
     event.stopPropagation();
-    const arr = taskSubtasks[taskTitle]?.slice() || [];
-      arr[idx] = !arr[idx];
-    let newTaskSubtasks = { ...taskSubtasks, [taskTitle]: arr };
-    let newCollapsed = { ...collapsed };
-        if (arr.length > 0 && arr.every(Boolean)) {
-      newCollapsed[taskTitle] = true;
-        } else {
-      newCollapsed[taskTitle] = false;
-        }
-    setTaskSubtasks(newTaskSubtasks);
-    setCollapsed(newCollapsed);
-    updatePatientTasks({ taskSubtasks: newTaskSubtasks, collapsed: newCollapsed });
+    const newChecked = event.target.checked; // השתמש במצב החדש ישירות
+    addOrUpdateTaskToPatient(taskTitle, 'updateSubtask', { 
+      subtaskIndex: idx, 
+      checked: newChecked 
+    });
   };
 
   const handleDynamicFinish = async (result) => {
+    console.log('🌳 handleDynamicFinish called:', result);
     setShowDynamicQuestions(false);
-    if (result.finalTask) addTaskWithDependencies(result.finalTask);
+    if (result.finalTask) {
+      console.log('🌳 Adding finalTask from tree (with setTimeout):', result.finalTask);
+      setTimeout(() => {
+        addOrUpdateTaskToPatient(result.finalTask, 'add');
+      }, 0);
+    }
     if (result.population) {
       if (patient) {
         const updated = { ...patient, population: result.population };
@@ -517,7 +644,10 @@ export default function App() {
   const percent = total === 0 ? 0 : (done / total) * 100;
 
   const openPatient = (p) => {
+    console.log('🚪 openPatient called with:', p);
+    setShowBackstageView(false);
     if (patient && patient.identifier === p.identifier) {
+      console.log('🔄 Closing current patient');
       setPatient(null);
       setSelectedTasks([]);
       setTaskSubtasks({});
@@ -525,30 +655,61 @@ export default function App() {
       setShowForm(false);
       setShowDynamicQuestions(false);
     } else {
+      console.log('📂 Opening new patient:', p.identifier);
+      console.log('📋 Patient data:', { 
+        selectedTasks: p.selectedTasks || [], 
+        taskSubtasks: p.taskSubtasks || {}, 
+        collapsed: p.collapsed || {} 
+      });
       setPatient(p);
       setSelectedTasks(p.selectedTasks || []);
       setTaskSubtasks(p.taskSubtasks || {});
       setCollapsed(p.collapsed || {});
       setShowForm(false);
       setShowDynamicQuestions(false);
+      console.log('✅ Patient opened successfully');
     }
   };
 
   // עדכון משימות בתיק ושמירה ב-localStorage
   const updatePatientTasks = async (fields) => {
-    if (!patient) return;
+    console.log('🔄 updatePatientTasks called with fields:', fields);
+    if (!patient) {
+      console.log('❌ No patient in updatePatientTasks');
+      return;
+    }
+    
+    console.log('📊 Current patient:', patient);
     const { total, done } = getAllSubtasks(
       (fields.selectedTasks ?? patient.selectedTasks) || [],
       (fields.taskSubtasks ?? patient.taskSubtasks) || {},
       allTasks
     );
     const percent = total === 0 ? 0 : (done / total) * 100;
+    console.log('📈 Calculated progress:', { total, done, percent });
+    
     const updated = { ...patient, ...fields, percent };
+    console.log('💾 Updated patient data:', updated);
+    
     setPatient(updated);
-    await updatePatient(patient.id, updated);
-    const patients = await getPatients();
-    setPatientsList(patients.filter(p => !p.isArchived));
-    setArchivedPatients(patients.filter(p => p.isArchived));
+    console.log('🔄 Local state updated');
+    
+    try {
+      console.log('🌐 Calling updatePatient with ID:', patient.id);
+      await updatePatient(patient.id, updated);
+      console.log('✅ updatePatient completed');
+      
+      console.log('📥 Fetching updated patients list...');
+      const patients = await getPatients();
+      console.log('📋 Got patients list, length:', patients.length);
+      
+      setPatientsList(patients.filter(p => !p.isArchived));
+      setArchivedPatients(patients.filter(p => p.isArchived));
+      console.log('✅ Patients lists updated');
+    } catch (error) {
+      console.error('❌ Error in updatePatientTasks:', error);
+      throw error;
+    }
   };
 
   // עוטף את כל הפונקציות שמעדכנות משימות כך שיעדכנו גם את התיק
@@ -692,39 +853,8 @@ export default function App() {
     return () => clearInterval(interval);
   }, [patient]);
 
-  // מימוש לפונקציה שמתווספת למשימות דרך עץ ההחלטות
-  const addTaskWithDependencies = (taskTitle) => {
-    if (!taskTitle) return;
-    // לא להוסיף פעמיים
-    if (selectedTasks.includes(taskTitle)) return;
-    const task = allTasks.find(t => t.title === taskTitle);
-    if (!task) return;
-    // הוספת המשימה ל-selectedTasks
-    let newSelectedTasks = [...selectedTasks, taskTitle];
-    // אתחול כל תתי-המשימות ל-false (לא הושלמו)
-    let newTaskSubtasks = { ...taskSubtasks };
-    if (task.subtasks.length > 0) {
-      newTaskSubtasks[taskTitle] = Array(task.subtasks.length).fill(false);
-    } else {
-      // אם אין תתי-משימות – אתחול יחיד ל-false
-      newTaskSubtasks[taskTitle] = [false];
-    }
-    // פתיחה של המשימה (לא collapsed)
-    let newCollapsed = { ...collapsed, [taskTitle]: false };
-    // טיפול בתלות: אם זו "שיבוץ לפמי" חייבים גם "הפניה חדשה"
-    if (taskTitle === "שיבוץ לפמי" && !newSelectedTasks.includes("הפניה חדשה")) {
-      newSelectedTasks = [...newSelectedTasks, "הפניה חדשה"];
-      const t = allTasks.find(t => t.title === "הפניה חדשה");
-      if (t) {
-        newTaskSubtasks["הפניה חדשה"] = Array(t.subtasks.length).fill(false);
-        newCollapsed["הפניה חדשה"] = false;
-      }
-    }
-    setSelectedTasks(newSelectedTasks);
-    setTaskSubtasks(newTaskSubtasks);
-    setCollapsed(newCollapsed);
-    updatePatientTasks({ selectedTasks: newSelectedTasks, taskSubtasks: newTaskSubtasks, collapsed: newCollapsed });
-  };
+  // מימוש לפונקציה שמתווספת למשימות דרך עץ ההחלטות - מוחלף בפונקציה האחידה
+  // const addTaskWithDependencies = (taskTitle) => { ... } - נמחק
 
   // קבועים לכרטיסיות
   const CIRCLE_SIZE = 64;
@@ -765,14 +895,38 @@ export default function App() {
     
     const independent = [];
     const dependent = [];
-    const decisionTrees = [];
+    let decisionTrees = [];
     
+    // הוספת כל העצים תחת decisionTrees
+    if (appData.decisionTrees) {
+      decisionTrees = Object.values(appData.decisionTrees);
+    }
+
+    // הוספת כל המשימות שמופיעות כ-finalTask באחד העצים ל-mainTasks (אם לא קיימות)
+    const all = new Set();
+    const extract = (node) => {
+      if (!node) return;
+      if (node.finalTask) all.add(node.finalTask);
+      if (node.options) node.options.forEach(opt => extract(opt));
+      if (node.nextQuestion) extract(node.nextQuestion);
+    };
+    decisionTrees.forEach(tree => extract(tree));
+    let mainTasksChanged = false;
+    all.forEach(taskTitle => {
+      if (!appData.mainTasks.some(t => t.title === taskTitle)) {
+        appData.mainTasks.push({ title: taskTitle, subtasks: [] });
+        mainTasksChanged = true;
+      }
+    });
+    if (mainTasksChanged) {
+      setAppData({ ...appData });
+      setAppDataFirestore({ ...appData });
+    }
+
     allTasks.forEach(task => {
-      if (task.title === "הפניה ליועץ חיצוני") {
-        decisionTrees.push(task);
-      } else if (appData.decisionTree.finalTasks.includes(task.title)) {
+      if (decisionSubtasks.includes(task.title)) {
         dependent.push(task);
-      } else {
+      } else if (!decisionTrees.some(tree => tree.title === task.title)) {
         independent.push(task);
       }
     });
@@ -834,16 +988,85 @@ export default function App() {
   // useEffect לטעינת תיקים מ-Firestore בלבד (טעינה ראשונית)
   useEffect(() => {
     async function fetchPatients() {
+      console.log('🔄 fetchPatients started');
       try {
+        console.log('📥 Getting patients from server...');
         const patients = await getPatients();
-        setPatientsList(patients.filter(p => !p.isArchived));
-        setArchivedPatients(patients.filter(p => p.isArchived));
+        console.log('✅ Patients fetched:', patients);
+        
+        const activePatients = patients.filter(p => !p.isArchived);
+        const archivedPatientsList = patients.filter(p => p.isArchived);
+        
+        console.log('📋 Setting patients lists:', { 
+          active: activePatients.length, 
+          archived: archivedPatientsList.length 
+        });
+        
+        setPatientsList(activePatients);
+        setArchivedPatients(archivedPatientsList);
+        console.log('✅ Patients lists set successfully');
       } catch (e) {
+        console.error('❌ Error fetching patients:', e);
         setError('שגיאה בטעינת תיקים מה-שרת: ' + e.message);
       }
     }
     fetchPatients();
   }, []);
+
+  // הוספת סטייט לשליטה בדרופדאון
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  // חישוב תוצאות חיפוש לכל התיקים (כולל ארכיון)
+  const allMatchingPatients = React.useMemo(() => {
+    if (!search.trim()) return [];
+    const s = search.trim().toLowerCase();
+    const regular = patientsList.filter(p => p.identifier.toLowerCase().includes(s)).map(p => ({ ...p, isArchived: false }));
+    const archived = archivedPatients.filter(p => p.identifier.toLowerCase().includes(s)).map(p => ({ ...p, isArchived: true }));
+    return [...regular, ...archived];
+  }, [patientsList, archivedPatients, search]);
+
+  const [showBackstagePasswordModal, setShowBackstagePasswordModal] = useState(false);
+  const [backstagePasswordInput, setBackstagePasswordInput] = useState('');
+  const [backstagePasswordError, setBackstagePasswordError] = useState('');
+
+  // --- סטייט לעצי החלטה מרובים ---
+  const [selectedTreeId, setSelectedTreeId] = useState(() => localStorage.getItem('selectedTreeId') || null);
+  const [showAddTreeModal, setShowAddTreeModal] = useState(false);
+  const [newTreeTitle, setNewTreeTitle] = useState("");
+
+  const handleAddTree = () => {
+    setShowAddTreeModal(true);
+    setNewTreeTitle("");
+  };
+
+  const handleSaveNewTree = (e) => {
+    e.preventDefault();
+    if (!newTreeTitle.trim()) return;
+    const id = Date.now().toString();
+    const newTree = {
+      title: newTreeTitle,
+      initialQuestion: "שאלה ראשית חדשה",
+      options: []
+    };
+    const updatedTrees = {
+      ...(appData.decisionTrees || {}),
+      [id]: newTree
+    };
+    setAppData({ ...appData, decisionTrees: updatedTrees });
+    setAppDataFirestore({ ...appData, decisionTrees: updatedTrees });
+    setShowAddTreeModal(false);
+    setNewTreeTitle("");
+    setSelectedTreeId(id);
+  };
+
+  useEffect(() => {
+    if (selectedTreeId) {
+      localStorage.setItem('selectedTreeId', selectedTreeId);
+    }
+  }, [selectedTreeId]);
+
+  // --- סטייטים עיקריים ---
+  const [selectedDecisionTreeId, setSelectedDecisionTreeId] = useState(null);
 
   if (loading) {
     return (
@@ -915,566 +1138,736 @@ export default function App() {
   }
 
   return (
-    <div className="app-root" style={{ display: 'flex', flexDirection: 'row', width: '100vw', minHeight: '100vh' }}>
-      {/* פאנל המשימות השוטפות - ימין */}
-      <div
-        className="routine-tasks-panel"
-        style={{ width: rightPanelWidth, minWidth: 120, maxWidth: 400, transition: dragging === 'right' ? 'none' : 'width 0.15s', direction: 'rtl' }}
-      >
-        <div className="routine-tasks-title">משימות שוטפות</div>
-        <hr className="routine-tasks-divider" />
-        <div>
-          {appData ? appData.routineTasks.map((task, idx) => (
-            <div className="routine-task-card" key={task}>
-              <input
-                type="checkbox"
-                className="routine-task-checkbox"
-                checked={routineChecked[idx]}
-                onChange={() => handleRoutineCheck(idx)}
-              />
-              <span className={"routine-task-label" + (routineChecked[idx] ? " strike" : "")}>{task}</span>
-            </div>
-          )) : null}
+    <div className="app-outer-wrapper">
+      {/* Header */}
+      <header className="main-header">
+        <img src={mermaidLogo} alt="לוגו אשף המשימות" className="main-logo" />
+        <div className="header-titles">
+          <h1 className="main-title">צריך לבחור שם</h1>
+          <h2 className="sub-title">מכון הקבע חיל האוויר</h2>
         </div>
-        {/* כפתור "מאחורי הקלעים" */}
-        <div style={{ marginTop: 24, padding: '0 16px' }}>
-          <button
-            onClick={() => setShowBackstageView(true)}
-            style={{
-              width: '100%',
-              padding: '12px',
-              background: '#8D7350',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              transition: 'background 0.2s'
-            }}
-            onMouseEnter={(e) => e.target.style.background = '#6B5B47'}
-            onMouseLeave={(e) => e.target.style.background = '#8D7350'}
-          >
-            מאחורי הקלעים
-          </button>
-        </div>
-      </div>
-      {/* פס גרירה ימני */}
-      <div
-        className="resize-handle right"
-        style={{ cursor: 'ew-resize', width: 8, background: dragging === 'right' ? '#90caf9' : 'transparent', zIndex: 10 }}
-        onMouseDown={e => { setDragging('right'); setStartX(e.clientX); setStartWidth(rightPanelWidth); }}
-        onTouchStart={e => { setDragging('right'); setStartX(e.touches[0].clientX); setStartWidth(rightPanelWidth); }}
-      />
-      {/* מרכז */}
-      <div className="main-content" style={{ flex: 1, minWidth: 0, maxWidth: 900, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-        {/* שורת חיפוש תיקים */}
-        <div className="search-bar" style={{ width: '100%', background: 'none', padding: '0 0 10px 0', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <div className="header-actions" style={{ position: 'relative' }}>
           <input
             type="text"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => {
+              setSearch(e.target.value);
+              setShowDropdown(!!e.target.value);
+            }}
             placeholder="חפש תיק לפי שם..."
             dir="rtl"
-            style={{ flex: 1, maxWidth: 420, fontSize: 17, padding: '7px 12px', borderRadius: 8, border: '1px solid #ccc', background: '#fff', textAlign: 'right' }}
+            style={{ maxWidth: 220, fontSize: 16, padding: '7px 12px', borderRadius: 8, border: '1px solid #ccc', background: '#fff', textAlign: 'right', marginLeft: 8 }}
             className="text-right"
+            onFocus={() => setShowDropdown(!!search)}
+            onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
           />
-        </div>
-        {/* לשונית יצירת תיק חדש */}
-        <div className="add-patient-bar" style={{ width: '100%', background: '#f7f7f7', padding: '12px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', borderBottom: '1px solid #e0e0e0', marginBottom: 24 }}>
+          {showDropdown && allMatchingPatients.length > 0 && (
+            <div style={{
+              position: 'absolute',
+              top: 40,
+              right: 0,
+              left: 0,
+              background: '#fff',
+              border: '1px solid #ccc',
+              borderRadius: 8,
+              boxShadow: '0 2px 8px #e6e0d2',
+              zIndex: 9999,
+              maxHeight: 260,
+              overflowY: 'auto',
+              direction: 'rtl',
+              fontSize: 15
+            }}>
+              {allMatchingPatients.map((p, idx) => (
+                <div
+                  key={p.identifier + (p.isArchived ? '-archived' : '')}
+                  style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: idx < allMatchingPatients.length-1 ? '1px solid #eee' : 'none', color: p.isArchived ? '#888' : '#333', background: p.isArchived ? '#f7f7f7' : '#fff' }}
+                  onMouseDown={() => {
+                    openPatient(p);
+                    setShowDropdown(false);
+                  }}
+                  title={p.isArchived ? 'תיק בארכיון' : 'תיק פעיל'}
+                >
+                  {p.identifier} {p.isArchived && <span style={{ fontSize: 13, color: '#bfae7e' }}>(בארכיון)</span>}
+                </div>
+              ))}
+            </div>
+          )}
           <form
             className="add-patient-form"
             dir="rtl"
             onSubmit={handleFormSubmit}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', maxWidth: 420 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 8 }}
           >
             <input
               name="identifier"
               value={form.identifier}
               onChange={handleFormChange}
               required
-              placeholder="הוסף תיק חדש (לדוג' ת.ש 658)"
+              placeholder="תיק חדש (לדוג' ת.ש 658)"
               dir="rtl"
               className="text-right"
-              style={{ flex: 1, fontSize: 17, padding: '7px 12px', borderRadius: 8, border: '1px solid #ccc', background: '#fff', textAlign: 'right' }}
+              style={{ maxWidth: 180, fontSize: 16, padding: '7px 12px', borderRadius: 8, border: '1px solid #ccc', background: '#fff', textAlign: 'right' }}
             />
             <button type="submit" style={{ fontWeight: 'bold', fontSize: 15, padding: '7px 16px', borderRadius: 8, background: '#1976d2', color: '#fff', border: 'none' }}>הוסף</button>
           </form>
         </div>
-        {/* התוכן המרכזי: מאחורי הקלעים / ניהול תיק / ציטוט */}
-        {showBackstageView ? (
-          <div className="backstage-view text-right" dir="rtl" style={{ padding: '24px', maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <h2 style={{ margin: 0, color: '#8D7350', fontSize: 28 }}>מאחורי הקלעים - עריכת נתונים</h2>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {saving && (
-                  <div style={{ 
-                    padding: '8px 16px', 
-                    background: '#FFA726', 
-                    color: '#fff', 
-                    borderRadius: 6, 
-                    fontSize: 14 
-                  }}>
-                    שומר...
-                </div>
-                )}
-                {saveMessage && (
-                  <div style={{ 
-                    padding: '8px 16px', 
-                    background: saveMessage.type === 'success' ? '#4CAF50' : '#f44336', 
-                    color: '#fff', 
-                    borderRadius: 6, 
-                    fontSize: 14 
-                  }}>
-                    {saveMessage.text}
-                </div>
-                )}
-                          <button
-                  onClick={refreshData}
-                  disabled={loading}
-                  style={{
-                    padding: '8px 16px',
-                    background: loading ? '#ccc' : '#4CAF50',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 6,
-                    fontSize: 14,
-                    fontWeight: 'bold',
-                    cursor: loading ? 'not-allowed' : 'pointer'
-                  }}
-                >
-                  {loading ? 'טוען...' : 'רענן נתונים'}
-                          </button>
-                <button
-                  onClick={() => setShowBackstageView(false)}
-                  style={{
-                    padding: '8px 16px',
-                    background: '#f7f7f7',
-                    color: '#333',
-                    border: '1px solid #ccc',
-                    borderRadius: 6,
-                    fontSize: 14,
-                    fontWeight: 'bold',
-                    cursor: 'pointer'
-                  }}
-                >
-                  סגור
-                </button>
-              </div>
-                          </div>
-            <div style={{ marginBottom: 40 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <h3 style={{ color: '#8D7350', fontSize: 22, margin: 0, borderBottom: '2px solid #CBB994', paddingBottom: 8 }}>
-                  רשימת המשימות
-                </h3>
-                          <button
-                  onClick={() => {
-                    const newTask = {
-                      title: "משימה חדשה",
-                      subtasks: []
-                    };
-                    addMainTask(newTask);
-                            }}
-                  style={{
-                    padding: '8px 16px',
-                    background: '#4CAF50',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 6,
-                    fontSize: 14,
-                    fontWeight: 'bold',
-                    cursor: 'pointer'
-                  }}
-                          >
-                  הוסף משימה
-                          </button>
-                        </div>
-              <MainTasksEditor
-                mainTasks={appData?.mainTasks || []}
-                onUpdate={updateMainTask}
-                onAdd={addMainTask}
-                onDelete={deleteMainTask}
-                            />
-                      </div>
-            <div style={{ marginBottom: 40 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <h3 style={{ color: '#8D7350', fontSize: 22, margin: 0, borderBottom: '2px solid #CBB994', paddingBottom: 8 }}>
-                  משימות שוטפות
-                </h3>
-                <button
-                  onClick={() => addRoutineTask("משימה שוטפת חדשה")}
-                  style={{
-                    padding: '8px 16px',
-                    background: '#4CAF50',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 6,
-                    fontSize: 14,
-                    fontWeight: 'bold',
-                    cursor: 'pointer'
-                  }}
-                >
-                  הוסף משימה
-                </button>
-              </div>
-              <RoutineTasksEditor
-                routineTasks={appData?.routineTasks || []}
-                onUpdate={updateRoutineTask}
-                onAdd={addRoutineTask}
-                onDelete={deleteRoutineTask}
-              />
-                          </div>
-            <div style={{ marginBottom: 40 }}>
-              <h3 style={{ color: '#8D7350', fontSize: 22, marginBottom: 20, borderBottom: '2px solid #CBB994', paddingBottom: 8 }}>
-                עץ החלטות
-              </h3>
-              <div style={{ padding: '0 16px' }}>
-                <DecisionTreeEditor
-                  decisionTree={appData?.decisionTree}
-                  onUpdate={updateDecisionTree}
+        <button
+          onClick={() => { setShowBackstagePasswordModal(true); setBackstagePasswordInput(''); setBackstagePasswordError(''); setPatient(null); }}
+          style={{
+            marginRight: 'auto',
+            marginLeft: 16,
+            padding: '10px 18px',
+            background: '#8D7350',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 8,
+            fontSize: 15,
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            transition: 'background 0.2s',
+            alignSelf: 'center',
+            height: 44
+          }}
+          onMouseEnter={e => e.target.style.background = '#6B5B47'}
+          onMouseLeave={e => e.target.style.background = '#8D7350'}
+        >
+          <FaCog size={22} style={{ verticalAlign: 'middle', color: '#fff' }} />
+        </button>
+        <button
+          onClick={() => { setPatient(null); setShowBackstageView(false); }}
+          style={{
+            marginLeft: 8,
+            padding: '10px 18px',
+            background: '#CBB994',
+            color: '#4E342E',
+            border: 'none',
+            borderRadius: 8,
+            fontSize: 15,
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            transition: 'background 0.2s',
+            alignSelf: 'center',
+            height: 44,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          onMouseEnter={e => e.target.style.background = '#B8A77A'}
+          onMouseLeave={e => e.target.style.background = '#CBB994'}
+        >
+          <FaHome size={22} style={{ verticalAlign: 'middle' }} />
+        </button>
+      </header>
+      <div className="app-root" style={{ display: 'flex', flexDirection: 'row', width: '100vw', minHeight: '100vh' }}>
+        {/* פאנל המשימות השוטפות - ימין */}
+        <div
+          className="routine-tasks-panel"
+          style={{ width: rightPanelWidth, minWidth: 120, maxWidth: 400, transition: dragging === 'right' ? 'none' : 'width 0.15s', direction: 'rtl' }}
+        >
+          <div className="routine-tasks-title">משימות שוטפות</div>
+          <hr className="routine-tasks-divider" />
+          <div>
+            {appData ? appData.routineTasks.map((task, idx) => (
+              <div className="routine-task-card" key={task}>
+                <input
+                  type="checkbox"
+                  className="routine-task-checkbox"
+                  checked={routineChecked[idx]}
+                  onChange={() => handleRoutineCheck(idx)}
                 />
-            </div>
+                <span className={"routine-task-label" + (routineChecked[idx] ? " strike" : "")}>{task}</span>
+              </div>
+            )) : null}
+          </div>
+          
         </div>
-      </div>
-        ) : patient ? (
-          <div className="patient-card text-right" dir="rtl" style={{ maxWidth: 480, margin: '0 auto', background: '#fffbea', borderRadius: 16, boxShadow: '0 2px 8px #e6e0d2', padding: 24, position: 'relative' }}>
-            {/* עיגול אחוזי התקדמות */}
-            <div style={{ position: 'absolute', left: 24, top: 24 }}>
-              <CircleProgress percent={percent} size={56} stroke={7} />
-        </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-              {editingPatientName ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                  <input
-                    type="text"
-                    value={editingPatientNameValue}
-                    onChange={(e) => setEditingPatientNameValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        updatePatientName(editingPatientNameValue);
-                      } else if (e.key === 'Escape') {
-                        cancelEditingPatientName();
-                      }
-                    }}
-                    autoFocus
+        {/* פס גרירה ימני */}
+        <div
+          className="resize-handle right"
+          style={{ cursor: 'ew-resize', width: 8, background: dragging === 'right' ? '#90caf9' : 'transparent', zIndex: 10 }}
+          onMouseDown={e => { setDragging('right'); setStartX(e.clientX); setStartWidth(rightPanelWidth); }}
+          onTouchStart={e => { setDragging('right'); setStartX(e.touches[0].clientX); setStartWidth(rightPanelWidth); }}
+        />
+        {/* מרכז */}
+        <div className="main-content" style={{ flex: 1, minWidth: 0, maxWidth: 900, margin: '0 auto', display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+          
+          {/* התוכן המרכזי: מאחורי הקלעים / ניהול תיק / ציטוט */}
+          {showBackstageView ? (
+            <div className="backstage-view text-right" dir="rtl">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                <h2 style={{ margin: 0, color: '#8D7350', fontSize: 28 }}>מאחורי הקלעים - עריכת נתונים</h2>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {saving && (
+                    <div style={{ 
+                      padding: '8px 16px', 
+                      background: '#FFA726', 
+                      color: '#fff', 
+                      borderRadius: 6, 
+                      fontSize: 14 
+                    }}>
+                      שומר...
+                  </div>
+                  )}
+                  {saveMessage && (
+                    <div style={{ 
+                      padding: '8px 16px', 
+                      background: saveMessage.type === 'success' ? '#4CAF50' : '#f44336', 
+                      color: '#fff', 
+                      borderRadius: 6, 
+                      fontSize: 14 
+                    }}>
+                      {saveMessage.text}
+                  </div>
+                  )}
+                            <button
+                    onClick={refreshData}
+                    disabled={loading}
                     style={{
-                      fontSize: 28,
-                      fontWeight: 'bold',
-                      color: '#8D7350',
-                      background: 'transparent',
-                      border: '2px solid #8D7350',
+                      padding: '8px 16px',
+                      background: loading ? '#ccc' : '#4CAF50',
+                      color: '#fff',
+                      border: 'none',
                       borderRadius: 6,
-                      padding: '4px 8px',
-                      width: '100%',
-                      textAlign: 'right',
-                      direction: 'rtl'
+                      fontSize: 14,
+                      fontWeight: 'bold',
+                      cursor: loading ? 'not-allowed' : 'pointer'
                     }}
-                  />
+                  >
+                    {loading ? 'טוען...' : 'רענן נתונים'}
+                            </button>
                   <button
-                    onClick={() => updatePatientName(editingPatientNameValue)}
+                    onClick={() => setShowBackstageView(false)}
                     style={{
-                      padding: '4px 8px',
+                      padding: '8px 16px',
+                      background: '#f7f7f7',
+                      color: '#333',
+                      border: '1px solid #ccc',
+                      borderRadius: 6,
+                      fontSize: 14,
+                      fontWeight: 'bold',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    סגור
+                  </button>
+                </div>
+                            </div>
+              <div style={{ marginBottom: 40 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <h3 style={{ color: '#8D7350', fontSize: 22, margin: 0, borderBottom: '2px solid #CBB994', paddingBottom: 8 }}>
+                    רשימת המשימות
+                  </h3>
+                            <button
+                    onClick={() => {
+                      const newTask = {
+                        title: "משימה חדשה",
+                        subtasks: []
+                      };
+                      addMainTask(newTask);
+                              }}
+                    style={{
+                      padding: '8px 16px',
                       background: '#4CAF50',
                       color: '#fff',
                       border: 'none',
-                      borderRadius: 4,
-                      fontSize: 12,
+                      borderRadius: 6,
+                      fontSize: 14,
                       fontWeight: 'bold',
-                      cursor: 'pointer',
-                      minWidth: 'auto'
+                      cursor: 'pointer'
                     }}
-                  >
-                    שמור
-                  </button>
+                            >
+                    הוסף משימה
+                            </button>
+                          </div>
+                <MainTasksEditor
+                  mainTasks={appData?.mainTasks || []}
+                  onUpdate={updateMainTask}
+                  onAdd={addMainTask}
+                  onDelete={deleteMainTask}
+                              />
+                        </div>
+              <div style={{ marginBottom: 40 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <h3 style={{ color: '#8D7350', fontSize: 22, margin: 0, borderBottom: '2px solid #CBB994', paddingBottom: 8 }}>
+                    משימות שוטפות
+                  </h3>
                   <button
-                    onClick={cancelEditingPatientName}
+                    onClick={() => addRoutineTask("משימה שוטפת חדשה")}
                     style={{
-                      padding: '4px 8px',
-                      background: '#f44336',
+                      padding: '8px 16px',
+                      background: '#4CAF50',
                       color: '#fff',
                       border: 'none',
-                      borderRadius: 4,
-                      fontSize: 12,
+                      borderRadius: 6,
+                      fontSize: 14,
                       fontWeight: 'bold',
-                      cursor: 'pointer',
-                      minWidth: 'auto'
+                      cursor: 'pointer'
                     }}
                   >
-                    בטל
+                    הוסף משימה
                   </button>
                 </div>
-              ) : (
-                <h2 
-                  style={{ 
-                    margin: 0, 
-                    color: '#8D7350', 
-                    fontSize: 28, 
-                    cursor: 'pointer',
-                    padding: '4px 8px',
-                    borderRadius: 6,
-                    transition: 'background 0.2s'
-                  }}
-                  onClick={startEditingPatientName}
-                  onMouseEnter={(e) => e.target.style.background = '#f0f0f0'}
-                  onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                  title="לחץ לעריכת שם התיק"
-                >
-                  {patient?.identifier || 'תיק לא ידוע'}
-                </h2>
-              )}
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  onClick={() => setPatient(null)}
-              style={{
-                    padding: '8px 16px',
-                    background: '#f7f7f7',
-                    color: '#333',
-                    border: '1px solid #ccc',
-                    borderRadius: 6,
-                    fontSize: 14,
-                    fontWeight: 'bold',
-                    cursor: 'pointer'
-              }}
-            >
-                  סגור תיק
-                </button>
-              </div>
-              </div>
-              {showDynamicQuestions && (
-              <DynamicQuestions
-                decisionTree={appData?.decisionTree}
-                onFinish={handleDynamicFinish}
-                onClose={() => setShowDynamicQuestions(false)}
-              />
-              )}
-            <div style={{ marginBottom: 24 }}>
-              {/* --- הצגת כל המשימות האפשריות לבחירה (פיצ'ר בחירת משימות לתיק) --- */}
-              <h3 style={{ color: '#8D7350', fontSize: 20, marginBottom: 12 }}>בחר משימות לתיק</h3>
-              <ul className="all-tasks-list" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 18 }}>
-                {/* שאר המשימות (בלתי תלויות) - ראשונות */}
-                {independent.map((task) => (
-                  <li key={task.title} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, color: '#4E342E', fontWeight: 'normal', background: 'none', border: 'none', padding: '2px 0' }}>
-                    <input
-                      type="checkbox"
-                      checked={selectedTasks.includes(task.title)}
-                      onChange={e => {
-                        if (e.target.checked) {
-                          let newSelectedTasks = selectedTasks.includes(task.title) ? selectedTasks : [...selectedTasks, task.title];
-                          let newTaskSubtasks = { ...taskSubtasks };
-                          if (task.subtasks.length > 0) {
-                            newTaskSubtasks[task.title] = Array(task.subtasks.length).fill(false);
-                          } else {
-                            newTaskSubtasks[task.title] = [false];
-                          }
-                          let newCollapsed = { ...collapsed, [task.title]: false };
-                          setSelectedTasks(newSelectedTasks);
-                          setTaskSubtasks(newTaskSubtasks);
-                          setCollapsed(newCollapsed);
-                          updatePatientTasks({ selectedTasks: newSelectedTasks, taskSubtasks: newTaskSubtasks, collapsed: newCollapsed });
-                        } else {
-                          let newSelectedTasks = selectedTasks.filter((t) => t !== task.title);
-                          let newTaskSubtasks = { ...taskSubtasks };
-                          delete newTaskSubtasks[task.title];
-                          let newCollapsed = { ...collapsed };
-                          delete newCollapsed[task.title];
-                          setSelectedTasks(newSelectedTasks);
-                          setTaskSubtasks(newTaskSubtasks);
-                          setCollapsed(newCollapsed);
-                          updatePatientTasks({ selectedTasks: newSelectedTasks, taskSubtasks: newTaskSubtasks, collapsed: newCollapsed });
-                        }
+                <RoutineTasksEditor
+                  routineTasks={appData?.routineTasks || []}
+                  onUpdate={updateRoutineTask}
+                  onAdd={addRoutineTask}
+                  onDelete={deleteRoutineTask}
+                />
+                <h3 style={{ color: '#8D7350', fontSize: 22, marginBottom: 20, borderBottom: '2px solid #CBB994', paddingBottom: 8 }}>
+              עצי החלטה
+            </h3>
+            <button onClick={handleAddTree} style={{ marginBottom: 16, background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 14, fontWeight: 'bold', cursor: 'pointer' }}>
+              הוסף עץ החלטות חדש
+            </button>
+            {showAddTreeModal && (
+              <form onSubmit={handleSaveNewTree} style={{ marginBottom: 16, background: '#fff', border: '1px solid #CBB994', borderRadius: 8, padding: 16, maxWidth: 320 }}>
+                <div style={{ marginBottom: 8 }}>
+                  <label style={{ fontWeight: 'bold', color: '#8D7350' }}>שם העץ:</label>
+                  <input
+                    type="text"
+                    value={newTreeTitle}
+                    onChange={e => setNewTreeTitle(e.target.value)}
+                    required
+                    style={{ width: '100%', padding: '8px', borderRadius: 4, border: '1px solid #ccc', fontSize: 15, marginTop: 4 }}
+                  />
+                </div>
+                <button type="submit" style={{ background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 14, fontWeight: 'bold', cursor: 'pointer', marginLeft: 8 }}>שמור</button>
+                <button type="button" onClick={() => setShowAddTreeModal(false)} style={{ background: '#f44336', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 16px', fontSize: 14, fontWeight: 'bold', cursor: 'pointer' }}>ביטול</button>
+              </form>
+            )}
+            {appData?.decisionTrees && Object.keys(appData.decisionTrees).length > 0 && (
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                {Object.entries(appData.decisionTrees).map(([id, tree]) => (
+                  <li key={id}>
+                    <button
+                      onClick={() => setSelectedTreeId(id)}
+                      style={{
+                        background: selectedTreeId === id ? '#CBB994' : '#fafafa',
+                        color: '#4E342E',
+                        border: '1px solid #CBB994',
+                        borderRadius: 6,
+                        padding: '8px 12px',
+                        fontWeight: selectedTreeId === id ? 'bold' : 'normal',
+                        cursor: 'pointer',
+                        minWidth: 80
                       }}
-                      style={{ width: 16, height: 16, minWidth: 16, minHeight: 16, maxWidth: 16, maxHeight: 16 }}
-                    />
-                    <span>{task.title}</span>
+                    >
+                      {tree.title}
+                    </button>
                   </li>
                 ))}
-                {/* עץ החלטות (ללא צ'קבוקס, לחיץ) */}
-                {decisionTrees.map((treeTask) => (
-                  <React.Fragment key={treeTask.title}>
-                    <li
-                      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, color: '#4E342E', fontWeight: 'normal', background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', userSelect: 'none' }}
-                      onClick={() => setShowDynamicQuestions(true)}
-                      tabIndex={0}
-                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setShowDynamicQuestions(true); }}
-                    >
-                      <span style={{ textDecoration: 'underline dotted', fontWeight: 500 }}>{treeTask.title}</span>
-                    </li>
-                    {/* משימות תלויות (finalTasks) מוזחות מתחת לעץ ההחלטות */}
-                    {dependent.map((depTask) => (
-                      <li key={depTask.title} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, color: '#4E342E', fontWeight: 'normal', background: 'none', border: 'none', padding: '2px 0 2px 0', marginRight: 24 }}>
-                          <input
-                            type="checkbox"
-                          checked={selectedTasks.includes(depTask.title)}
-                            onChange={e => {
-                            if (e.target.checked) {
-                              let newSelectedTasks = selectedTasks.includes(depTask.title) ? selectedTasks : [...selectedTasks, depTask.title];
-                              let newTaskSubtasks = { ...taskSubtasks };
-                              if (depTask.subtasks.length > 0) {
-                                newTaskSubtasks[depTask.title] = Array(depTask.subtasks.length).fill(false);
-                              } else {
-                                newTaskSubtasks[depTask.title] = [false];
-                              }
-                              let newCollapsed = { ...collapsed, [depTask.title]: false };
-                              setSelectedTasks(newSelectedTasks);
-                              setTaskSubtasks(newTaskSubtasks);
-                              setCollapsed(newCollapsed);
-                              updatePatientTasks({ selectedTasks: newSelectedTasks, taskSubtasks: newTaskSubtasks, collapsed: newCollapsed });
-                            } else {
-                              let newSelectedTasks = selectedTasks.filter((t) => t !== depTask.title);
-                              let newTaskSubtasks = { ...taskSubtasks };
-                              delete newTaskSubtasks[depTask.title];
-                              let newCollapsed = { ...collapsed };
-                              delete newCollapsed[depTask.title];
-                              setSelectedTasks(newSelectedTasks);
-                              setTaskSubtasks(newTaskSubtasks);
-                              setCollapsed(newCollapsed);
-                              updatePatientTasks({ selectedTasks: newSelectedTasks, taskSubtasks: newTaskSubtasks, collapsed: newCollapsed });
-                            }
-                          }}
-                          style={{ width: 16, height: 16, minWidth: 16, minHeight: 16, maxWidth: 16, maxHeight: 16 }}
-                        />
-                        <span>{depTask.title}</span>
-                      </li>
-                    ))}
-                  </React.Fragment>
-                ))}
               </ul>
-                        </div>
-            {/* --- משימות נבחרות (משימות בתיק) --- */}
-            {patient && (
-              <div style={{ marginBottom: 24 }}>
-                <h3 style={{ color: '#8D7350', fontSize: 20, marginBottom: 16 }}>משימות נבחרות</h3>
-                {selectedTasks.length === 0 ? (
-                  <div style={{ color: '#888', fontSize: 16, textAlign: 'center', padding: '20px 0' }}>
-                    לא נבחרו משימות עדיין
+            )}
+            <div style={{ padding: '0 16px' }}>
+              <DecisionTreeEditor
+                decisionTree={getCurrentDecisionTree()}
+                mainTasks={appData?.mainTasks || []}
+                onUpdate={updateDecisionTree}
+              />
+            </div>
+                            </div>
+              <div style={{ marginBottom: 40 }}>
+                
+              
+          </div>
+        </div>
+          ) : patient ? (
+            <div className="patient-card text-right" dir="rtl" style={{ maxWidth: 480, margin: '0 auto', background: '#fffbea', borderRadius: 16, boxShadow: '0 2px 8px #e6e0d2', padding: 24, position: 'relative' }}>
+              
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                {editingPatientName ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                    <input
+                      type="text"
+                      value={editingPatientNameValue}
+                      onChange={(e) => setEditingPatientNameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          updatePatientName(editingPatientNameValue);
+                        } else if (e.key === 'Escape') {
+                          cancelEditingPatientName();
+                        }
+                      }}
+                      autoFocus
+                      style={{
+                        fontSize: 28,
+                        fontWeight: 'bold',
+                        color: '#8D7350',
+                        background: 'transparent',
+                        border: '2px solid #8D7350',
+                        borderRadius: 6,
+                        padding: '4px 8px',
+                        width: '100%',
+                        textAlign: 'right',
+                        direction: 'rtl'
+                      }}
+                    />
+                    <button
+                      onClick={() => updatePatientName(editingPatientNameValue)}
+                      style={{
+                        padding: '4px 8px',
+                        background: '#4CAF50',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 4,
+                        fontSize: 12,
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        minWidth: 'auto'
+                      }}
+                    >
+                      שמור
+                    </button>
+                    <button
+                      onClick={cancelEditingPatientName}
+                      style={{
+                        padding: '4px 8px',
+                        background: '#f44336',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 4,
+                        fontSize: 12,
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        minWidth: 'auto'
+                      }}
+                    >
+                      בטל
+                    </button>
                   </div>
                 ) : (
-                  selectedTasks.map((taskTitle, index) => {
-                    const task = allTasks.find(t => t.title === taskTitle) || { title: taskTitle, subtasks: [] };
-                    const subtasksArr = taskSubtasks[taskTitle] || (task.subtasks.length > 0 ? Array(task.subtasks.length).fill(false) : [false]);
-                    return (
-                      <div key={taskTitle} className="added-task-block" style={{ marginBottom: 10, borderRadius: 8, boxShadow: '0 1px 4px #e6e0d2' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                  <input
-                                    type="checkbox"
-                              checked={subtasksArr.length > 0 && subtasksArr.every(Boolean)}
-                              onChange={e => handleTaskCheckbox(task, e.target.checked)}
-                              style={{ transform: 'scale(1.2)', width: 16, height: 16, minWidth: 16, minHeight: 16, maxWidth: 16, maxHeight: 16 }}
-                            />
-                            <span style={{ fontSize: 16, fontWeight: 'bold', color: '#4E342E', textDecoration: subtasksArr.length > 0 && subtasksArr.every(Boolean) ? 'line-through' : 'none' }}>
-                              {taskTitle}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => toggleCollapse(taskTitle)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#8D7350' }}
-                          >
-                            {collapsed[taskTitle] ? '▼' : '▲'}
-                          </button>
-                        </div>
-                        {!collapsed[taskTitle] && task.subtasks.length > 0 && (
-                          <ul className="subtasks" style={{ marginRight: 24, marginTop: 8, padding: 0, listStyle: 'none' }}>
-                            {task.subtasks.map((sub, idx) => (
-                              <li key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                                <input
-                                  type="checkbox"
-                                  checked={!!subtasksArr[idx]}
-                                  onChange={e => handleSubtaskCheckbox(taskTitle, idx, e)}
-                                  style={{ transform: 'scale(1.1)', width: 16, height: 16, minWidth: 16, minHeight: 16, maxWidth: 16, maxHeight: 16 }}
-                                />
-                                <span style={{ fontSize: 14, color: '#666', textDecoration: subtasksArr[idx] ? 'line-through' : 'none' }}>
-                                  {sub}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    );
-                  })
+                  <h2 
+                    style={{ 
+                      margin: 0, 
+                      color: '#8D7350', 
+                      fontSize: 28, 
+                      cursor: 'pointer',
+                      padding: '4px 8px',
+                      borderRadius: 6,
+                      transition: 'background 0.2s'
+                    }}
+                    onClick={startEditingPatientName}
+                    onMouseEnter={(e) => e.target.style.background = '#f0f0f0'}
+                    onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                    title="לחץ לעריכת שם התיק"
+                  >
+                    {patient?.identifier || 'תיק לא ידוע'}
+                  </h2>
                 )}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => setPatient(null)}
+                style={{
+                      padding: '8px 16px',
+                      background: '#f7f7f7',
+                      color: '#333',
+                      border: '1px solid #ccc',
+                      borderRadius: 6,
+                      fontSize: 14,
+                      fontWeight: 'bold',
+                      cursor: 'pointer'
+                }}
+              >
+                    סגור תיק
+                  </button>
                 </div>
-              )}
-            {/* --- הוסף שדה הערות חופשיות לתוך דף ניהול תיק נבחר (מתחת למשימות נבחרות) --- */}
-            {patient && (
-              <div style={{ marginBottom: 32 }}>
-                <h3 style={{ color: '#8D7350', fontSize: 20, marginBottom: 10 }}>הערות חופשיות</h3>
-                <textarea
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  placeholder="הוסף כאן הערות חופשיות..."
-                  style={{
-                    width: '100%',
-                    minHeight: 80,
-                    maxHeight: 220,
-                    fontSize: 16,
-                    border: '1.5px solid #CBB994',
-                    borderRadius: 8,
-                    padding: '12px 14px',
-                    background: '#FFF8F2',
-                    color: '#4E342E',
-                    fontFamily: 'inherit',
-                    resize: 'vertical',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                    marginBottom: 0,
-                    transition: 'border 0.2s'
-                  }}
+                </div>
+                {showDynamicQuestions && (
+                <DynamicQuestions
+                  decisionTree={decisionTrees[selectedDecisionTreeId]}
+                  onFinish={handleDynamicFinish}
+                  onClose={() => setShowDynamicQuestions(false)}
                 />
-              </div>
-            )}
-          </div>
-        ) : (
-          <div style={{ color: '#888', marginTop: 80, fontSize: 22, textAlign: 'center', width: '100%', minHeight: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1.5 }}>
-            {idleQuotes[idleQuoteIdx]}
-          </div>
-        )}
-      </div>
-      {/* פס גרירה שמאלי */}
-      <div
-        className="resize-handle left"
-        style={{ cursor: 'ew-resize', width: 8, background: dragging === 'left' ? '#90caf9' : 'transparent', zIndex: 10 }}
-        onMouseDown={e => { setDragging('left'); setStartX(e.clientX); setStartWidth(leftPanelWidth); }}
-        onTouchStart={e => { setDragging('left'); setStartX(e.touches[0].clientX); setStartWidth(leftPanelWidth); }}
-      />
-      {/* פאנל ניהול התיקים - שמאל */}
-      <div
-        className="patients-list-panel"
-        style={{ width: leftPanelWidth, minWidth: 120, maxWidth: 400, transition: dragging === 'left' ? 'none' : 'width 0.15s', direction: 'rtl' }}
-      >
-        <PatientsListPanel
-          patientsList={filteredPatients}
-          archivedPatients={archivedPatients}
-          openPatient={openPatient}
-          selectedPatientId={patient?.identifier}
-          archivePatient={archivePatient}
-          unarchivePatient={unarchivePatient}
-          deletePatient={openDeleteModal}
-          deleteAllArchived={deleteAllArchived}
-          onMenuOpen={setMenuOpenIdx}
-          menuOpenIdx={menuOpenIdx}
-          menuRef={menuRef}
-          archivedMatchedIds={archivedMatchedIds}
-          matchedIds={matchedIds}
-          leftPanelWidth={leftPanelWidth}
-        />
-        </div>
-      {/* הוספת מודאל לתוך ה-return --- */}
-      {deleteModal.open && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.25)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 2px 16px #8884', padding: 32, minWidth: 320, maxWidth: 400, textAlign: 'center', direction: 'rtl' }}>
-            <div style={{ fontSize: 20, color: '#d32f2f', fontWeight: 'bold', marginBottom: 16 }}>אזהרה: מחיקה בלתי הפיכה!</div>
-            <div style={{ fontSize: 16, color: '#333', marginBottom: 24 }}>
-              {deleteModal.type === 'single' ? 'האם אתה בטוח שברצונך למחוק את התיק? פעולה זו אינה ניתנת לשחזור.' : 'האם אתה בטוח שברצונך למחוק את כל התיקים בארכיון? פעולה זו אינה ניתנת לשחזור.'}
-                </div>
-            <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
-              <button onClick={confirmDelete} style={{ background: '#d32f2f', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 'bold', fontSize: 16, padding: '8px 24px', cursor: 'pointer' }}>מחק</button>
-              <button onClick={cancelDelete} style={{ background: '#f7f7f7', color: '#333', border: '1px solid #ccc', borderRadius: 8, fontWeight: 'bold', fontSize: 16, padding: '8px 24px', cursor: 'pointer' }}>בטל</button>
+                )}
+              <div style={{ marginBottom: 24 }}>
+                {/* --- הצגת כל המשימות האפשריות לבחירה (פיצ'ר בחירת משימות לתיק) --- */}
+                <h3 style={{ color: '#8D7350', fontSize: 20, marginBottom: 12 }}>בחר משימות לתיק</h3>
+                
+                <ul className="all-tasks-list" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 18 }}>
+                  {/* שאר המשימות (בלתי תלויות) - ראשונות */}
+                  {independent.map((task) => (
+                    <li key={task.title} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, color: '#4E342E', fontWeight: 'normal', background: 'none', border: 'none', padding: '2px 0' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedTasks.includes(task.title)}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            addOrUpdateTaskToPatient(task.title, 'add');
+                          } else {
+                            addOrUpdateTaskToPatient(task.title, 'remove');
+                          }
+                        }}
+                        style={{ width: 16, height: 16, minWidth: 16, minHeight: 16, maxWidth: 16, maxHeight: 16 }}
+                      />
+                      <span>{task.title}</span>
+                    </li>
+                  ))}
+                  {/* עץ החלטות (ללא צ'קבוקס, לחיץ) */}
+                  {decisionTrees.map((treeTask, idx) => (
+                    <React.Fragment key={treeTask.title}>
+                      <li
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, color: '#4E342E', fontWeight: 'normal', background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', userSelect: 'none' }}
+                        onClick={() => { setSelectedDecisionTreeId(idx); setShowDynamicQuestions(true); }}
+                        tabIndex={0}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setSelectedDecisionTreeId(idx); setShowDynamicQuestions(true); } }}
+                      >
+                        <span style={{ textDecoration: 'underline dotted', fontWeight: 500 }}>{treeTask.title}</span>
+                      </li>
+                      {/* משימות תלויות () מוזחות מתחת לעץ ההחלטות */}
+                      {dependent.map((depTask) => (
+                        <li key={depTask.title} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, color: '#4E342E', fontWeight: 'normal', background: 'none', border: 'none', padding: '2px 0 2px 0', marginRight: 24 }}>
+                            <input
+                              type="checkbox"
+                            checked={selectedTasks.includes(depTask.title)}
+                              onChange={e => {
+                              if (e.target.checked) {
+                                addOrUpdateTaskToPatient(depTask.title, 'add');
+                              } else {
+                                addOrUpdateTaskToPatient(depTask.title, 'remove');
+                              }
+                            }}
+                            style={{ width: 16, height: 16, minWidth: 16, minHeight: 16, maxWidth: 16, maxHeight: 16 }}
+                          />
+                          <span>{depTask.title}</span>
+                        </li>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </ul>
+                          </div>
+                {/* --- משימות נבחרות (משימות בתיק) --- */}
+                {patient && (
+                  <div style={{ marginBottom: 24 }}>
+                    <h3 style={{ color: '#8D7350', fontSize: 20, marginBottom: 16 }}>משימות נבחרות</h3>
+                    {/* פס התקדמות אופקי */}
+                    <div style={{ margin: '0 0 16px 0', width: '100%' }}>
+                      <div style={{
+                        background: '#eee',
+                        borderRadius: 8,
+                        height: 18,
+                        width: '100%',
+                        position: 'relative',
+                        overflow: 'hidden'
+                      }}>
+                        <div style={{
+                          background: '#8D7350',
+                          height: '100%',
+                          width: percent + '%',
+                          borderRadius: 8,
+                          transition: 'width 0.3s'
+                        }} />
+                        <span style={{
+                          position: 'absolute',
+                          left: 12,
+                          top: 0,
+                          height: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          color: '#000000',
+                          fontWeight: 'bold',
+                          fontSize: 14
+                        }}>{Math.round(percent)}%</span>
                       </div>
+                    </div>
+                    {selectedTasks.length === 0 ? (
+                      <div style={{ color: '#888', fontSize: 16, textAlign: 'center', padding: '20px 0' }}>
+                        לא נבחרו משימות עדיין
+                      </div>
+                    ) : (
+                      selectedTasks.map((taskTitle, index) => {
+                        const task = allTasks.find(t => t.title === taskTitle) || { title: taskTitle, subtasks: [] };
+                        const subtasksArr = taskSubtasks[taskTitle] || (task.subtasks.length > 0 ? Array(task.subtasks.length).fill(false) : [false]);
+                        return (
+                          <div key={taskTitle} className="added-task-block" style={{ marginBottom: 10, borderRadius: 8, boxShadow: '0 1px 4px #e6e0d2' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      <input
+                                        type="checkbox"
+                                  checked={subtasksArr.length > 0 && subtasksArr.every(Boolean)}
+                                  onChange={e => handleTaskCheckbox(task, e.target.checked)}
+                                  style={{ transform: 'scale(1.2)', width: 16, height: 16, minWidth: 16, minHeight: 16, maxWidth: 16, maxHeight: 16 }}
+                                />
+                                <span style={{ fontSize: 16, fontWeight: 'bold', color: '#4E342E', textDecoration: subtasksArr.length > 0 && subtasksArr.every(Boolean) ? 'line-through' : 'none' }}>
+                                  {taskTitle}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => toggleCollapse(taskTitle)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#8D7350' }}
+                              >
+                                {collapsed[taskTitle] ? '▼' : '▲'}
+                              </button>
+                            </div>
+                            {!collapsed[taskTitle] && task.subtasks.length > 0 && (
+                              <ul className="subtasks" style={{ marginRight: 24, marginTop: 8, padding: 0, listStyle: 'none' }}>
+                                {task.subtasks.map((sub, idx) => (
+                                  <li key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={!!subtasksArr[idx]}
+                                      onChange={e => handleSubtaskCheckbox(taskTitle, idx, e)}
+                                      style={{ transform: 'scale(1.1)', width: 16, height: 16, minWidth: 16, minHeight: 16, maxWidth: 16, maxHeight: 16 }}
+                                    />
+                                    <span style={{ fontSize: 14, color: '#666', textDecoration: subtasksArr[idx] ? 'line-through' : 'none' }}>
+                                      {sub}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                    </div>
+                  )}
+                {/* --- הוסף שדה הערות חופשיות לתוך דף ניהול תיק נבחר (מתחת למשימות נבחרות) --- */}
+                {patient && (
+                  <div style={{ marginBottom: 32 }}>
+                    <h3 style={{ color: '#8D7350', fontSize: 20, marginBottom: 10 }}>הערות חופשיות</h3>
+                    <textarea
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
+                      placeholder="הוסף כאן הערות חופשיות..."
+                      style={{
+                        width: '100%',
+                        minHeight: 80,
+                        maxHeight: 220,
+                        fontSize: 16,
+                        border: '1.5px solid #CBB994',
+                        borderRadius: 8,
+                        padding: '12px 14px',
+                        background: '#FFF8F2',
+                        color: '#4E342E',
+                        fontFamily: 'inherit',
+                        resize: 'vertical',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                        marginBottom: 0,
+                        transition: 'border 0.2s'
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            
+          ) : (
+            <div style={{ color: '#888', marginTop: 80, fontSize: 22, textAlign: 'center', width: '100%', minHeight: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1.5 }}>
+              {idleQuotes[idleQuoteIdx]}
+            </div>
+          )}
+        </div>
+        {/* פס גרירה שמאלי */}
+        <div
+          className="resize-handle left"
+          style={{ cursor: 'ew-resize', width: 8, background: dragging === 'left' ? '#90caf9' : 'transparent', zIndex: 10 }}
+          onMouseDown={e => { setDragging('left'); setStartX(e.clientX); setStartWidth(leftPanelWidth); }}
+          onTouchStart={e => { setDragging('left'); setStartX(e.touches[0].clientX); setStartWidth(leftPanelWidth); }}
+        />
+        {/* פאנל ניהול התיקים - שמאל */}
+        <div
+          className="patients-list-panel"
+          style={{ width: leftPanelWidth, minWidth: 120, maxWidth: 400, transition: dragging === 'left' ? 'none' : 'width 0.15s', direction: 'rtl' }}
+        >
+          <PatientsListPanel
+            patientsList={filteredPatients}
+            archivedPatients={archivedPatients}
+            openPatient={openPatient}
+            selectedPatientId={patient?.identifier}
+            archivePatient={archivePatient}
+            unarchivePatient={unarchivePatient}
+            deletePatient={openDeleteModal}
+            deleteAllArchived={deleteAllArchived}
+            onMenuOpen={setMenuOpenIdx}
+            menuOpenIdx={menuOpenIdx}
+            menuRef={menuRef}
+            archivedMatchedIds={archivedMatchedIds}
+            matchedIds={matchedIds}
+            leftPanelWidth={leftPanelWidth}
+          />
+          </div>
+        {/* הוספת מודאל לתוך ה-return --- */}
+        {deleteModal.open && (
+          <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.25)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 2px 16px #8884', padding: 32, minWidth: 320, maxWidth: 400, textAlign: 'center', direction: 'rtl' }}>
+              <div style={{ fontSize: 20, color: '#d32f2f', fontWeight: 'bold', marginBottom: 16 }}>אזהרה: מחיקה בלתי הפיכה!</div>
+              <div style={{ fontSize: 16, color: '#333', marginBottom: 24 }}>
+                {deleteModal.type === 'single' ? 'האם אתה בטוח שברצונך למחוק את התיק? פעולה זו אינה ניתנת לשחזור.' : 'האם אתה בטוח שברצונך למחוק את כל התיקים בארכיון? פעולה זו אינה ניתנת לשחזור.'}
+                  </div>
+              <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
+                <button onClick={confirmDelete} style={{ background: '#d32f2f', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 'bold', fontSize: 16, padding: '8px 24px', cursor: 'pointer' }}>מחק</button>
+                <button onClick={cancelDelete} style={{ background: '#f7f7f7', color: '#333', border: '1px solid #ccc', borderRadius: 8, fontWeight: 'bold', fontSize: 16, padding: '8px 24px', cursor: 'pointer' }}>בטל</button>
                         </div>
-                        </div>
-                      )}
+                          </div>
+                          </div>
+                        )}
+      </div>
+      {/* פוטר */}
+      <footer className="main-footer">
+        כל הזכויות שמורות לתום שורש, 2025
+      </footer>
+      {showBackstagePasswordModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.25)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }}>
+          <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 2px 16px #8884', padding: 32, minWidth: 320, maxWidth: 400, textAlign: 'center', direction: 'rtl' }}>
+            <div style={{ fontSize: 20, color: '#8D7350', fontWeight: 'bold', marginBottom: 16 }}>
+              מסך מאחורי הקלעים מאפשר שינוי ועריכה בלתי הפיכים של תהליכי העבודה במכון.<br />אם תרצו להמשיך לעריכת התוכן - הכניסו את הסיסמה:
+            </div>
+            <input
+              type="password"
+              value={backstagePasswordInput}
+              onChange={e => setBackstagePasswordInput(e.target.value)}
+              placeholder="סיסמה"
+              style={{ fontSize: 18, padding: '10px 16px', borderRadius: 8, border: '1.5px solid #CBB994', marginBottom: 12, width: '80%', textAlign: 'center' }}
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') {
+                if (backstagePasswordInput === '1005') {
+                  setShowBackstagePasswordModal(false);
+                  setShowBackstageView(true);
+                  setBackstagePasswordInput('');
+                  setBackstagePasswordError('');
+                } else {
+                  setBackstagePasswordError('סיסמה שגויה, נסו שוב');
+                }
+              }}}
+            />
+            <div style={{ color: '#d32f2f', minHeight: 24, marginBottom: 8 }}>{backstagePasswordError}</div>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 8 }}>
+              <button
+                onClick={() => {
+                  if (backstagePasswordInput === '1005') {
+                    setShowBackstagePasswordModal(false);
+                    setShowBackstageView(true);
+                    setBackstagePasswordInput('');
+                    setBackstagePasswordError('');
+                  } else {
+                    setBackstagePasswordError('סיסמה שגויה, נסו שוב');
+                  }
+                }}
+                style={{ background: '#8D7350', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 'bold', fontSize: 16, padding: '8px 24px', cursor: 'pointer' }}
+              >
+                המשך
+              </button>
+              <button
+                onClick={() => setShowBackstagePasswordModal(false)}
+                style={{ background: '#f7f7f7', color: '#333', border: '1px solid #ccc', borderRadius: 8, fontWeight: 'bold', fontSize: 16, padding: '8px 24px', cursor: 'pointer' }}
+              >
+                בטל
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showBackstageView && (
+        <div className="backstage-view text-right" dir="rtl">
+          {/* ... existing code ... */}
+          <div style={{ marginBottom: 40 }}>
+            
+          </div>
+          {/* ... existing code ... */}
+        </div>
+      )}
     </div>
   );
 }
