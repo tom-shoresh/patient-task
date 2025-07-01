@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FaEdit, FaTrash, FaPlus, FaQuestionCircle, FaTasks } from 'react-icons/fa';
 
 // קומפוננטה רקורסיבית להצגת עץ ההחלטות כרשימה מקוננת
-function NestedListNode({ node, onEdit, onAdd, onDelete, onAddQuestion, onEditFinalTask, mainTasks, parentPath = [] }) {
+function NestedListNode({ node, onEdit, onAdd, onDelete, onAddQuestion, onEditFinalTask, mainTasks, parentPath = [], isRoot = false }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(node.question || node.name || '');
   const [editingFinalTask, setEditingFinalTask] = useState(false);
@@ -49,7 +49,7 @@ function NestedListNode({ node, onEdit, onAdd, onDelete, onAddQuestion, onEditFi
         <button onClick={handleEdit} title={editing ? 'שמור' : 'ערוך'} style={{ fontSize: 16, marginLeft: 2, background: 'none', border: 'none', cursor: 'pointer' }}>
           <FaEdit />
         </button>
-        {!isQuestion && (
+        {!isRoot && (
           <button onClick={() => {
             console.log('🗑️ מחיקת אפשרות - path:', path);
             onDelete(path);
@@ -65,12 +65,14 @@ function NestedListNode({ node, onEdit, onAdd, onDelete, onAddQuestion, onEditFi
             <FaPlus />
           </button>
         )}
-        <button onClick={() => {
-          console.log('❓ הוספת שאלה - path:', path);
-          onAddQuestion(path);
-        }} title="הוסף שאלה" style={{ fontSize: 16, color: '#8D7350', marginLeft: 2, background: 'none', border: 'none', cursor: 'pointer' }}>
-          <FaQuestionCircle />
-        </button>
+        {!isQuestion && (
+          <button onClick={() => {
+            console.log('❓ הוספת שאלה - path:', path);
+            onAddQuestion(path);
+          }} title="הוסף שאלה" style={{ fontSize: 16, color: '#8D7350', marginLeft: 2, background: 'none', border: 'none', cursor: 'pointer' }}>
+            <FaQuestionCircle />
+          </button>
+        )}
       </span>
       {/* אפשרויות */}
       {isQuestion && node.options && node.options.length > 0 && (
@@ -183,6 +185,9 @@ function updateTreeByPath(tree, path, updater) {
 }
 
 const DecisionTreeEditor = ({ decisionTree, mainTasks, onUpdate }) => {
+  if (!decisionTree || typeof decisionTree !== 'object') {
+    return <div style={{color: '#c00', textAlign: 'center', margin: 30}}>שגיאה: עץ ההחלטה לא תקין או לא נטען</div>;
+  }
   const [tree, setTree] = useState(decisionTree);
   const [initialQuestion, setInitialQuestion] = useState(decisionTree.initialQuestion || '');
   const [editingInitial, setEditingInitial] = useState(false);
@@ -192,6 +197,7 @@ const DecisionTreeEditor = ({ decisionTree, mainTasks, onUpdate }) => {
     console.log('🔄 סנכרון state עם props חדשים');
     setTree(decisionTree);
     setInitialQuestion(decisionTree.initialQuestion || '');
+    setEditingInitial(false);
   }, [decisionTree]);
 
   const handleEdit = (path, newValue) => {
@@ -276,14 +282,13 @@ const DecisionTreeEditor = ({ decisionTree, mainTasks, onUpdate }) => {
   };
 
   const handleInitialEdit = () => {
-    setEditingInitial(!editingInitial);
     if (editingInitial) {
-      // שמירה
-      console.log('💾 שמירת שאלה ראשית:', initialQuestion);
       const newTree = { ...tree, initialQuestion };
+      console.log('handleInitialEdit: שולח עץ חדש ל-onUpdate:', newTree);
       setTree(newTree);
       onUpdate && onUpdate(newTree);
     }
+    setEditingInitial(!editingInitial);
   };
 
   return (
@@ -293,35 +298,17 @@ const DecisionTreeEditor = ({ decisionTree, mainTasks, onUpdate }) => {
           {`עץ החלטות - ${decisionTree.title || ''}`}
         </span>
       </div>
-      {editingInitial ? (
-        <input
-          value={initialQuestion}
-          onChange={e => {
-            setInitialQuestion(e.target.value);
-            const newTree = { ...tree, initialQuestion: e.target.value };
-            setTree(newTree);
-            onUpdate && onUpdate(newTree);
-          }}
-          onBlur={handleInitialEdit}
-          onKeyDown={e => { if (e.key === 'Enter') handleInitialEdit(); }}
-          style={{ fontSize: 16, padding: '4px 8px', borderRadius: 6, border: '1px solid #CBB994', marginBottom: 10, width: '100%' }}
-          autoFocus
-        />
-      ) : (
-        <div style={{ marginBottom: 10, fontSize: 16, color: '#4E342E', cursor: 'pointer' }} onClick={() => setEditingInitial(true)}>
-          {initialQuestion || 'לחץ לעריכת שאלה ראשית'}
-        </div>
-      )}
       <ul style={{ listStyleType: 'disc', paddingRight: 0, marginRight: 0 }}>
         <NestedListNode
-          node={{ question: initialQuestion, options: tree.options }}
+          node={{ question: tree.initialQuestion, options: tree.options }}
           onEdit={handleEdit}
           onAdd={handleAdd}
-          onDelete={handleDelete}
+          onDelete={path => {/* לא לאפשר מחיקת השורש */}}
           onAddQuestion={handleAddQuestion}
           onEditFinalTask={handleEditFinalTask}
           mainTasks={mainTasks}
           parentPath={[]}
+          isRoot={true}
         />
       </ul>
     </div>

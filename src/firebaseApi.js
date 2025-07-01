@@ -66,8 +66,8 @@ export async function getAppData() {
       let data = docSnap.data();
       // מיגרציה אוטומטית: אם יש decisionTree בודד ואין decisionTrees, נעטוף אותו כאובייקט
       if (data.decisionTree && !data.decisionTrees) {
-        data.decisionTrees = { "default": data.decisionTree };
-        // אפשר למחוק את data.decisionTree אם רוצים להפסיק תמיכה לאחור
+        const newId = Date.now().toString();
+        data.decisionTrees = { [newId]: data.decisionTree };
         delete data.decisionTree;
       }
       console.log('✅ getAppData completed successfully:', data);
@@ -83,10 +83,6 @@ export async function getAppData() {
 }
 
 export async function setAppData(data) {
-  // מחיקת decisionTree לפני שמירה
-  if (data.decisionTree) {
-    delete data.decisionTree;
-  }
   // שמירה: תמיד נשמור decisionTrees כאובייקט
   await setDoc(doc(db, "workflow", "main"), data);
 } 

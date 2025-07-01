@@ -196,6 +196,7 @@ const fetchAppData = async () => {
 };
 
 export default function App() {
+  const [selectedTreeId, setSelectedTreeId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [patient, setPatient] = useState(null);
   const [patientsList, setPatientsList] = useState([]);
@@ -334,20 +335,19 @@ export default function App() {
   // שימוש ב-decisionTrees כאובייקט
   // נבחר עץ ברירת מחדל ("default") אם אין בחירה
   const getCurrentDecisionTree = () => {
-    if (appData?.decisionTrees) {
-      const keys = Object.keys(appData.decisionTrees);
-      if (selectedTreeId && appData.decisionTrees[selectedTreeId]) return appData.decisionTrees[selectedTreeId];
-      if (keys.length > 0) return appData.decisionTrees[keys[0]];
+    if (appData?.decisionTrees && selectedTreeId && appData.decisionTrees[selectedTreeId]) {
+      return appData.decisionTrees[selectedTreeId];
     }
-    return appData?.decisionTree;
+    return null;
   };
 
+  // עזר: בדיקה האם selectedTreeId קיים
+  const isValidSelectedTreeId = appData?.decisionTrees && selectedTreeId && appData.decisionTrees[selectedTreeId];
+
   const updateDecisionTree = (updatedTree) => {
-    if (!appData || !selectedTreeId) return;
+    if (!appData || !isValidSelectedTreeId) return;
     let newData = { ...appData };
-    if (appData.decisionTrees) {
-      newData.decisionTrees = { ...appData.decisionTrees, [selectedTreeId]: updatedTree };
-    }
+    newData.decisionTrees = { ...appData.decisionTrees, [selectedTreeId]: updatedTree };
     setAppData(newData);
     setAppDataFirestore(newData);
   };
@@ -406,23 +406,21 @@ export default function App() {
   ] : [];
 
   // מערך של המשימות הסופיות מעץ ההחלטות - נבנה דינמית מהעץ
-  const decisionSubtasks = appData ? (() => {
+  const decisionSubtasks = (appData && appData.decisionTrees && selectedTreeId) ? (() => {
     const tasks = new Set();
-    const extract = (node) => {
+    const extractFinalTasks = (node) => {
       if (!node) return;
       if (node.finalTask) {
         tasks.add(node.finalTask);
       }
       if (node.options) {
-        node.options.forEach(opt => extract(opt));
+        node.options.forEach(opt => extractFinalTasks(opt));
       }
       if (node.nextQuestion) {
-        extract(node.nextQuestion);
+        extractFinalTasks(node.nextQuestion);
       }
     };
-    if (appData.decisionTrees) {
-      Object.values(appData.decisionTrees).forEach(tree => extract(tree));
-    }
+    extractFinalTasks(appData.decisionTrees[selectedTreeId]);
     return Array.from(tasks);
   })() : [];
 
@@ -901,32 +899,21 @@ export default function App() {
     if (appData.decisionTrees) {
       decisionTrees = Object.values(appData.decisionTrees);
     }
-
-    // הוספת כל המשימות שמופיעות כ-finalTask באחד העצים ל-mainTasks (אם לא קיימות)
-    const all = new Set();
-    const extract = (node) => {
+    
+    // איסוף כל המשימות הסופיות מכל העצים
+    const allFinalTasks = new Set();
+    const extractFinalTasks = (node) => {
       if (!node) return;
-      if (node.finalTask) all.add(node.finalTask);
-      if (node.options) node.options.forEach(opt => extract(opt));
-      if (node.nextQuestion) extract(node.nextQuestion);
+      if (node.finalTask) allFinalTasks.add(node.finalTask);
+      if (node.options) node.options.forEach(opt => extractFinalTasks(opt));
+      if (node.nextQuestion) extractFinalTasks(node.nextQuestion);
     };
-    decisionTrees.forEach(tree => extract(tree));
-    let mainTasksChanged = false;
-    all.forEach(taskTitle => {
-      if (!appData.mainTasks.some(t => t.title === taskTitle)) {
-        appData.mainTasks.push({ title: taskTitle, subtasks: [] });
-        mainTasksChanged = true;
-      }
-    });
-    if (mainTasksChanged) {
-      setAppData({ ...appData });
-      setAppDataFirestore({ ...appData });
-    }
-
+    Object.values(appData.decisionTrees || {}).forEach(tree => extractFinalTasks(tree));
+    
     allTasks.forEach(task => {
       if (decisionSubtasks.includes(task.title)) {
         dependent.push(task);
-      } else if (!decisionTrees.some(tree => tree.title === task.title)) {
+      } else if (!decisionTrees.some(tree => tree.title === task.title) && !allFinalTasks.has(task.title)) {
         independent.push(task);
       }
     });
@@ -1030,7 +1017,6 @@ export default function App() {
   const [backstagePasswordError, setBackstagePasswordError] = useState('');
 
   // --- סטייט לעצי החלטה מרובים ---
-  const [selectedTreeId, setSelectedTreeId] = useState(() => localStorage.getItem('selectedTreeId') || null);
   const [showAddTreeModal, setShowAddTreeModal] = useState(false);
   const [newTreeTitle, setNewTreeTitle] = useState("");
 
@@ -1052,6 +1038,7 @@ export default function App() {
       ...(appData.decisionTrees || {}),
       [id]: newTree
     };
+    console.log('handleSaveNewTree: new id:', id, 'updatedTrees:', updatedTrees);
     setAppData({ ...appData, decisionTrees: updatedTrees });
     setAppDataFirestore({ ...appData, decisionTrees: updatedTrees });
     setShowAddTreeModal(false);
@@ -1059,14 +1046,26 @@ export default function App() {
     setSelectedTreeId(id);
   };
 
-  useEffect(() => {
-    if (selectedTreeId) {
-      localStorage.setItem('selectedTreeId', selectedTreeId);
-    }
-  }, [selectedTreeId]);
+  // הצגת עץ החלטה
+  const currentTree = (appData && appData.decisionTrees && selectedTreeId)
+    ? appData.decisionTrees[selectedTreeId]
+    : null;
+  console.log('currentTree:', currentTree);
 
-  // --- סטייטים עיקריים ---
-  const [selectedDecisionTreeId, setSelectedDecisionTreeId] = useState(null);
+  // מחיקת עץ החלטה
+  const handleDeleteTree = (treeId) => {
+    if (!appData?.decisionTrees?.[treeId]) return;
+    const updatedTrees = { ...appData.decisionTrees };
+    delete updatedTrees[treeId];
+    let newSelected = selectedTreeId;
+    if (selectedTreeId === treeId) {
+      const keys = Object.keys(updatedTrees);
+      newSelected = keys.length > 0 ? keys[0] : null;
+    }
+    setAppData({ ...appData, decisionTrees: updatedTrees });
+    setAppDataFirestore({ ...appData, decisionTrees: updatedTrees });
+    setSelectedTreeId(newSelected);
+  };
 
   if (loading) {
     return (
@@ -1460,6 +1459,7 @@ export default function App() {
             )}
             <div style={{ padding: '0 16px' }}>
               <DecisionTreeEditor
+                key={selectedTreeId}
                 decisionTree={getCurrentDecisionTree()}
                 mainTasks={appData?.mainTasks || []}
                 onUpdate={updateDecisionTree}
@@ -1574,7 +1574,7 @@ export default function App() {
                 </div>
                 {showDynamicQuestions && (
                 <DynamicQuestions
-                  decisionTree={decisionTrees[selectedDecisionTreeId]}
+                  decisionTree={getCurrentDecisionTree()}
                   onFinish={handleDynamicFinish}
                   onClose={() => setShowDynamicQuestions(false)}
                 />
@@ -1584,7 +1584,6 @@ export default function App() {
                 <h3 style={{ color: '#8D7350', fontSize: 20, marginBottom: 12 }}>בחר משימות לתיק</h3>
                 
                 <ul className="all-tasks-list" style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 18 }}>
-                  {/* שאר המשימות (בלתי תלויות) - ראשונות */}
                   {independent.map((task) => (
                     <li key={task.title} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, color: '#4E342E', fontWeight: 'normal', background: 'none', border: 'none', padding: '2px 0' }}>
                       <input
@@ -1602,38 +1601,50 @@ export default function App() {
                       <span>{task.title}</span>
                     </li>
                   ))}
-                  {/* עץ החלטות (ללא צ'קבוקס, לחיץ) */}
-                  {decisionTrees.map((treeTask, idx) => (
-                    <React.Fragment key={treeTask.title}>
-                      <li
-                        style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, color: '#4E342E', fontWeight: 'normal', background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', userSelect: 'none' }}
-                        onClick={() => { setSelectedDecisionTreeId(idx); setShowDynamicQuestions(true); }}
-                        tabIndex={0}
-                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setSelectedDecisionTreeId(idx); setShowDynamicQuestions(true); } }}
-                      >
-                        <span style={{ textDecoration: 'underline dotted', fontWeight: 500 }}>{treeTask.title}</span>
-                      </li>
-                      {/* משימות תלויות () מוזחות מתחת לעץ ההחלטות */}
-                      {dependent.map((depTask) => (
-                        <li key={depTask.title} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, color: '#4E342E', fontWeight: 'normal', background: 'none', border: 'none', padding: '2px 0 2px 0', marginRight: 24 }}>
+                  {Object.entries(appData.decisionTrees).map(([id, tree]) => {
+                    const treeFinalTasks = (() => {
+                      const tasks = new Set();
+                      const extractFinalTasks = (node) => {
+                        if (!node) return;
+                        if (node.finalTask) tasks.add(node.finalTask);
+                        if (node.options) node.options.forEach(opt => extractFinalTasks(opt));
+                        if (node.nextQuestion) extractFinalTasks(node.nextQuestion);
+                      };
+                      extractFinalTasks(tree);
+                      return Array.from(tasks);
+                    })();
+                    return (
+                      <React.Fragment key={id}>
+                        <li
+                          style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, color: '#4E342E', fontWeight: 'normal', background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', userSelect: 'none' }}
+                          onClick={() => { setSelectedTreeId(id); setShowDynamicQuestions(true); }}
+                          tabIndex={0}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { setSelectedTreeId(id); setShowDynamicQuestions(true); }}}
+                        >
+                          <span style={{ textDecoration: 'underline dotted', fontWeight: 500 }}>{tree.title}</span>
+                        </li>
+                        {treeFinalTasks.map((depTaskTitle) => (
+                          <li key={depTaskTitle} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15, color: '#4E342E', fontWeight: 'normal', background: 'none', border: 'none', padding: '2px 0 2px 0', marginRight: 24 }}>
                             <input
                               type="checkbox"
-                            checked={selectedTasks.includes(depTask.title)}
+                              checked={selectedTasks.includes(depTaskTitle)}
                               onChange={e => {
-                              if (e.target.checked) {
-                                addOrUpdateTaskToPatient(depTask.title, 'add');
-                              } else {
-                                addOrUpdateTaskToPatient(depTask.title, 'remove');
-                              }
-                            }}
-                            style={{ width: 16, height: 16, minWidth: 16, minHeight: 16, maxWidth: 16, maxHeight: 16 }}
-                          />
-                          <span>{depTask.title}</span>
-                        </li>
-                      ))}
-                    </React.Fragment>
-                  ))}
+                                if (e.target.checked) {
+                                  addOrUpdateTaskToPatient(depTaskTitle, 'add');
+                                } else {
+                                  addOrUpdateTaskToPatient(depTaskTitle, 'remove');
+                                }
+                              }}
+                              style={{ width: 16, height: 16, minWidth: 16, minHeight: 16, maxWidth: 16, maxHeight: 16 }}
+                            />
+                            <span>{depTaskTitle}</span>
+                          </li>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </ul>
+                  
                           </div>
                 {/* --- משימות נבחרות (משימות בתיק) --- */}
                 {patient && (
@@ -1866,6 +1877,17 @@ export default function App() {
             
           </div>
           {/* ... existing code ... */}
+          {currentTree ? (
+            <DecisionTreeEditor
+              tree={currentTree}
+              onSave={updateDecisionTree}
+              // ...שאר הפרופס...
+            />
+          ) : (
+            <div style={{textAlign: 'center', color: '#888', margin: 30}}>
+              בחר עץ החלטה לעריכה
+            </div>
+          )}
         </div>
       )}
     </div>

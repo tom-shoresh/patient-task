@@ -1,6 +1,10 @@
 import React, { useState } from "react";
 
 export default function DynamicQuestions({ decisionTree, onFinish }) {
+  if (!decisionTree || typeof decisionTree !== 'object') {
+    return <div style={{color: '#c00', textAlign: 'center', margin: 30}}>שגיאה: עץ ההחלטה לא נטען או לא תקין</div>;
+  }
+
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
 
@@ -23,7 +27,15 @@ export default function DynamicQuestions({ decisionTree, onFinish }) {
       <div className="dynamic-questions" dir="rtl">
         <h3>{decisionTree.initialQuestion}</h3>
         {decisionTree.options.map((opt) => (
-          <button key={opt.name} onClick={() => { setAnswers({ affiliation: opt.name }); setStep(1); }} className="dq-btn">{opt.name}</button>
+          <button key={opt.name} onClick={() => {
+            if (opt.finalTask) {
+              const shortAff = getShortAffiliation(opt.name);
+              onFinish({ finalTask: opt.finalTask, population: shortAff });
+            } else {
+              setAnswers({ affiliation: opt.name });
+              setStep(1);
+            }
+          }} className="dq-btn">{opt.name}</button>
         ))}
       </div>
     );
