@@ -1180,7 +1180,7 @@ export default function App() {
       <header className="main-header">
         <img src={mermaidLogo} alt="לוגו אשף המשימות" className="main-logo" />
         <div className="header-titles">
-          <h1 className="main-title">צריך לבחור שם</h1>
+          <h1 className="main-title">מאיה צריכה לבחור שם...</h1>
           <h2 className="sub-title">מכון הקבע חיל האוויר</h2>
         </div>
         <div className="header-actions" style={{ position: 'relative' }}>
