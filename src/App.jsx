@@ -8,6 +8,7 @@ import MainTasksEditor from "./MainTasksEditor";
 import { FaArchive } from 'react-icons/fa';
 import { FaHome } from 'react-icons/fa';
 import { FaCog } from 'react-icons/fa';
+import { FaTrash } from 'react-icons/fa';
 import PatientsListPanel from "./PatientsListPanel";
 import { getAppData, setAppData as setAppDataFirestore, getPatients, addPatient, updatePatient, deletePatient as deletePatientFromApi, getRoutineStatus, setRoutineStatus } from "./firebaseApi";
 import mermaidLogo from "./assets/mermaid_logo.png.png";
@@ -269,12 +270,17 @@ export default function App() {
   // פונקציות עריכה למשימות
   const updateMainTask = (taskIndex, updatedTask) => {
     if (!appData) return;
-    const newData = {
-      ...appData,
-      mainTasks: appData.mainTasks.map((task, index) => 
-        index === taskIndex ? updatedTask : task
-      )
-    };
+    let newData;
+    if (taskIndex === -1 && Array.isArray(updatedTask)) {
+      newData = { ...appData, mainTasks: updatedTask };
+    } else {
+      newData = {
+        ...appData,
+        mainTasks: appData.mainTasks.map((task, index) => 
+          index === taskIndex ? updatedTask : task
+        )
+      };
+    }
     setAppData(newData);
     setAppDataFirestore(newData);
   };
@@ -302,12 +308,17 @@ export default function App() {
   // פונקציות עריכה למשימות שוטפות
   const updateRoutineTask = (taskIndex, newTask) => {
     if (!appData) return;
-    const newData = {
-      ...appData,
-      routineTasks: appData.routineTasks.map((task, index) => 
-        index === taskIndex ? newTask : task
-      )
-    };
+    let newData;
+    if (taskIndex === -1 && Array.isArray(newTask)) {
+      newData = { ...appData, routineTasks: newTask };
+    } else {
+      newData = {
+        ...appData,
+        routineTasks: appData.routineTasks.map((task, index) => 
+          index === taskIndex ? newTask : task
+        )
+      };
+    }
     setAppData(newData);
     setAppDataFirestore(newData);
   };
@@ -1067,6 +1078,9 @@ export default function App() {
     setSelectedTreeId(newSelected);
   };
 
+  // סטייט למחיקת עץ החלטה
+  const [treeToDelete, setTreeToDelete] = useState(null);
+
   if (loading) {
     return (
       <div style={{ 
@@ -1135,6 +1149,30 @@ export default function App() {
       </div>
     );
   }
+
+  const handleExportWorkflow = async () => {
+    try {
+      const data = await getAppData();
+      const now = new Date();
+      const pad = n => n.toString().padStart(2, '0');
+      const dateStr = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
+      const filename = `patient-task-workflow-export-${dateStr}.json`;
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 200);
+    } catch (err) {
+      alert('שגיאה בייצוא הנתונים: ' + err.message);
+    }
+  };
 
   return (
     <div className="app-outer-wrapper">
@@ -1296,61 +1334,79 @@ export default function App() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                 <h2 style={{ margin: 0, color: '#8D7350', fontSize: 28 }}>מאחורי הקלעים - עריכת נתונים</h2>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  {saving && (
-                    <div style={{ 
-                      padding: '8px 16px', 
-                      background: '#FFA726', 
-                      color: '#fff', 
-                      borderRadius: 6, 
-                      fontSize: 14 
-                    }}>
-                      שומר...
+                  {/* שורת כפתורים עליונה במסך מאחורי הקלעים */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {saving && (
+                      <div style={{ 
+                        padding: '8px 16px', 
+                        background: '#FFA726', 
+                        color: '#fff', 
+                        borderRadius: 6, 
+                        fontSize: 14 
+                      }}>
+                        שומר...
+                      </div>
+                    )}
+                    {saveMessage && (
+                      <div style={{ 
+                        padding: '8px 16px', 
+                        background: saveMessage.type === 'success' ? '#4CAF50' : '#f44336', 
+                        color: '#fff', 
+                        borderRadius: 6, 
+                        fontSize: 14 
+                      }}>
+                        {saveMessage.text}
+                      </div>
+                    )}
+                    <button
+                      onClick={refreshData}
+                      disabled={loading}
+                      style={{
+                        padding: '8px 16px',
+                        background: loading ? '#ccc' : '#4CAF50',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 6,
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        cursor: loading ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {loading ? 'טוען...' : 'רענן נתונים'}
+                    </button>
+                    <button
+                      onClick={handleExportWorkflow}
+                      style={{
+                        background: '#1976d2',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '8px 16px',
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      ייצא נתוני Workflow
+                    </button>
+                    <button
+                      onClick={() => setShowBackstageView(false)}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#f7f7f7',
+                        color: '#333',
+                        border: '1px solid #ccc',
+                        borderRadius: 6,
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      סגור
+                    </button>
                   </div>
-                  )}
-                  {saveMessage && (
-                    <div style={{ 
-                      padding: '8px 16px', 
-                      background: saveMessage.type === 'success' ? '#4CAF50' : '#f44336', 
-                      color: '#fff', 
-                      borderRadius: 6, 
-                      fontSize: 14 
-                    }}>
-                      {saveMessage.text}
-                  </div>
-                  )}
-                            <button
-                    onClick={refreshData}
-                    disabled={loading}
-                    style={{
-                      padding: '8px 16px',
-                      background: loading ? '#ccc' : '#4CAF50',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      fontSize: 14,
-                      fontWeight: 'bold',
-                      cursor: loading ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    {loading ? 'טוען...' : 'רענן נתונים'}
-                            </button>
-                  <button
-                    onClick={() => setShowBackstageView(false)}
-                    style={{
-                      padding: '8px 16px',
-                      background: '#f7f7f7',
-                      color: '#333',
-                      border: '1px solid #ccc',
-                      borderRadius: 6,
-                      fontSize: 14,
-                      fontWeight: 'bold',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    סגור
-                  </button>
                 </div>
-                            </div>
+              </div>
               <div style={{ marginBottom: 40 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                   <h3 style={{ color: '#8D7350', fontSize: 22, margin: 0, borderBottom: '2px solid #CBB994', paddingBottom: 8 }}>
@@ -1437,7 +1493,7 @@ export default function App() {
             {appData?.decisionTrees && Object.keys(appData.decisionTrees).length > 0 && (
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'row', gap: 8, marginBottom: 16 }}>
                 {Object.entries(appData.decisionTrees).map(([id, tree]) => (
-                  <li key={id}>
+                  <li key={id} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <button
                       onClick={() => setSelectedTreeId(id)}
                       style={{
@@ -1453,9 +1509,28 @@ export default function App() {
                     >
                       {tree.title}
                     </button>
+                    <button
+                      onClick={() => setTreeToDelete(id)}
+                      style={{ background: 'none', border: 'none', color: '#c00', cursor: 'pointer', fontSize: 18, padding: 0 }}
+                      title="מחק עץ החלטה"
+                    >
+                      <FaTrash />
+                    </button>
                   </li>
                 ))}
               </ul>
+            )}
+            {/* מודאל אישור מחיקה */}
+            {treeToDelete && (
+              <div style={{ position: 'fixed', top: 0, right: 0, left: 0, bottom: 0, background: '#0008', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ background: '#fff', borderRadius: 10, padding: 32, minWidth: 300, boxShadow: '0 2px 12px #cbb99433', textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, color: '#8D7350', marginBottom: 18 }}>האם למחוק את עץ ההחלטה "{appData.decisionTrees[treeToDelete]?.title}"?</div>
+                  <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>
+                    <button onClick={() => { handleDeleteTree(treeToDelete); setTreeToDelete(null); }} style={{ background: '#f44336', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 18px', fontSize: 16, fontWeight: 'bold', cursor: 'pointer' }}>מחק</button>
+                    <button onClick={() => setTreeToDelete(null)} style={{ background: '#fafafa', color: '#4E342E', border: '1px solid #CBB994', borderRadius: 6, padding: '8px 18px', fontSize: 16, fontWeight: 'bold', cursor: 'pointer' }}>ביטול</button>
+                  </div>
+                </div>
+              </div>
             )}
             <div style={{ padding: '0 16px' }}>
               <DecisionTreeEditor
@@ -1833,7 +1908,7 @@ export default function App() {
               style={{ fontSize: 18, padding: '10px 16px', borderRadius: 8, border: '1.5px solid #CBB994', marginBottom: 12, width: '80%', textAlign: 'center' }}
               autoFocus
               onKeyDown={e => { if (e.key === 'Enter') {
-                if (backstagePasswordInput === '1005') {
+                if (backstagePasswordInput === '1101') {
                   setShowBackstagePasswordModal(false);
                   setShowBackstageView(true);
                   setBackstagePasswordInput('');
@@ -1847,7 +1922,7 @@ export default function App() {
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 8 }}>
               <button
                 onClick={() => {
-                  if (backstagePasswordInput === '1005') {
+                  if (backstagePasswordInput === '1101') {
                     setShowBackstagePasswordModal(false);
                     setShowBackstageView(true);
                     setBackstagePasswordInput('');
@@ -1888,6 +1963,7 @@ export default function App() {
               בחר עץ החלטה לעריכה
             </div>
           )}
+          
         </div>
       )}
     </div>
