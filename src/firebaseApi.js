@@ -114,4 +114,34 @@ export async function getAppData() {
 export async function setAppData(data) {
   // שמירה: תמיד נשמור decisionTrees כאובייקט
   await setDoc(doc(db, "workflow", "main"), data);
+}
+
+// סנכרון בזמן אמת לסטטוס משימות שוטפות
+export function subscribeToRoutineStatus(callback) {
+  const docRef = doc(db, "routineStatus", "global");
+  return onSnapshot(docRef, (docSnap) => {
+    if (docSnap.exists()) {
+      callback(docSnap.data());
+    } else {
+      callback(null);
+    }
+  }, (error) => {
+    console.error('❌ subscribeToRoutineStatus failed:', error);
+    callback(null, error);
+  });
+}
+
+// סנכרון בזמן אמת להערות משימות שוטפות
+export function subscribeToRoutineNotes(callback) {
+  const docRef = doc(db, "routineNotes", "global");
+  return onSnapshot(docRef, (docSnap) => {
+    if (docSnap.exists()) {
+      callback(docSnap.data().notes || "");
+    } else {
+      callback("");
+    }
+  }, (error) => {
+    console.error('❌ subscribeToRoutineNotes failed:', error);
+    callback(null, error);
+  });
 } 

@@ -13,6 +13,7 @@ import PatientsListPanel from "./PatientsListPanel";
 import { getAppData, setAppData as setAppDataFirestore, getPatients, addPatient, updatePatient, deletePatient as deletePatientFromApi, getRoutineStatus, setRoutineStatus, getRoutineNotes, setRoutineNotes } from "./firebaseApi";
 import mermaidLogo from "./assets/mermaid_logo.png.png";
 import { subscribeToPatients } from "./firebaseApi";
+import { subscribeToRoutineStatus, subscribeToRoutineNotes } from "./firebaseApi";
 
 // משפטים אקראיים לתצוגה כאשר אין תיק נבחר
 const idleQuotes = [
@@ -241,15 +242,15 @@ export default function App() {
 
   // --- טען סטטוס משימות שוטפות גלובלי מ-Firestore ---
   useEffect(() => {
-    async function fetchRoutineStatus() {
-      const status = await getRoutineStatus();
+    const unsubscribe = subscribeToRoutineStatus((status, error) => {
+      if (error) return;
       if (status && Array.isArray(status.routineChecked)) {
         setRoutineChecked(status.routineChecked);
       } else if (appData) {
         setRoutineChecked(Array(appData.routineTasks.length).fill(false));
       }
-    }
-    fetchRoutineStatus();
+    });
+    return () => unsubscribe();
   }, [appData]);
 
   // --- עדכן סטטוס משימות שוטפות גלובלי ב-Firestore בכל שינוי ---
@@ -1051,11 +1052,11 @@ export default function App() {
 
   // טען הערות משימות שוטפות מה-Firestore
   useEffect(() => {
-    async function fetchNotes() {
-      const notes = await getRoutineNotes();
+    const unsubscribe = subscribeToRoutineNotes((notes, error) => {
+      if (error) return;
       setRoutineNotesState(notes);
-    }
-    fetchNotes();
+    });
+    return () => unsubscribe();
   }, []);
 
   // שמור הערות משימות שוטפות ב-Firestore בכל שינוי
