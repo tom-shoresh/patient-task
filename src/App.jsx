@@ -12,6 +12,7 @@ import { FaTrash } from 'react-icons/fa';
 import PatientsListPanel from "./PatientsListPanel";
 import { getAppData, setAppData as setAppDataFirestore, getPatients, addPatient, updatePatient, deletePatient as deletePatientFromApi, getRoutineStatus, setRoutineStatus, getRoutineNotes, setRoutineNotes } from "./firebaseApi";
 import mermaidLogo from "./assets/mermaid_logo.png.png";
+import { subscribeToPatients } from "./firebaseApi";
 
 // משפטים אקראיים לתצוגה כאשר אין תיק נבחר
 const idleQuotes = [
@@ -985,30 +986,17 @@ export default function App() {
 
   // useEffect לטעינת תיקים מ-Firestore בלבד (טעינה ראשונית)
   useEffect(() => {
-    async function fetchPatients() {
-      console.log('🔄 fetchPatients started');
-      try {
-        console.log('📥 Getting patients from server...');
-        const patients = await getPatients();
-        console.log('✅ Patients fetched:', patients);
-        
-        const activePatients = patients.filter(p => !p.isArchived);
-        const archivedPatientsList = patients.filter(p => p.isArchived);
-        
-        console.log('📋 Setting patients lists:', { 
-          active: activePatients.length, 
-          archived: archivedPatientsList.length 
-        });
-        
-        setPatientsList(activePatients);
-        setArchivedPatients(archivedPatientsList);
-        console.log('✅ Patients lists set successfully');
-      } catch (e) {
-        console.error('❌ Error fetching patients:', e);
-        setError('שגיאה בטעינת תיקים מה-שרת: ' + e.message);
+    const unsubscribe = subscribeToPatients((patients, error) => {
+      if (error) {
+        setError('שגיאה בטעינת תיקים מה-שרת: ' + error.message);
+        return;
       }
-    }
-    fetchPatients();
+      const activePatients = patients.filter(p => !p.isArchived);
+      const archivedPatientsList = patients.filter(p => p.isArchived);
+      setPatientsList(activePatients);
+      setArchivedPatients(archivedPatientsList);
+    });
+    return () => unsubscribe();
   }, []);
 
   // הוספת סטייט לשליטה בדרופדאון

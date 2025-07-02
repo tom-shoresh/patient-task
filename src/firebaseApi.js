@@ -1,5 +1,5 @@
 import { db } from "./firebase";
-import { collection, getDocs, addDoc, updateDoc, doc, deleteDoc, setDoc, getDoc } from "firebase/firestore";
+import { collection, getDocs, addDoc, updateDoc, doc, deleteDoc, setDoc, getDoc, onSnapshot } from "firebase/firestore";
 
 // קריאה של כל התיקים
 export async function getPatients() {
@@ -14,6 +14,18 @@ export async function getPatients() {
     console.error('❌ getPatients failed:', error);
     throw error;
   }
+}
+
+// קריאה של כל התיקים בזמן אמת
+export function subscribeToPatients(callback) {
+  console.log('📡 subscribeToPatients called');
+  return onSnapshot(collection(db, "patients"), (querySnapshot) => {
+    const patients = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    callback(patients);
+  }, (error) => {
+    console.error('❌ subscribeToPatients failed:', error);
+    callback(null, error);
+  });
 }
 
 // הוספת תיק חדש
