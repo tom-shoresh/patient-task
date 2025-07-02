@@ -1066,6 +1066,18 @@ export default function App() {
     return () => clearTimeout(timeout);
   }, [routineNotes]);
 
+  // סנכרון אוטומטי של התיק הנבחר עם רשימת התיקים (patientsList)
+  useEffect(() => {
+    if (!patient) return;
+    const updated = patientsList.find(p => p.id === patient.id);
+    if (updated && JSON.stringify(updated) !== JSON.stringify(patient)) {
+      setPatient(updated);
+      setSelectedTasks(updated.selectedTasks || []);
+      setTaskSubtasks(updated.taskSubtasks || {});
+      setCollapsed(updated.collapsed || {});
+    }
+  }, [patientsList, patient]);
+
   if (loading) {
     return (
       <div style={{ 
