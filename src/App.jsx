@@ -10,7 +10,7 @@ import { FaHome } from 'react-icons/fa';
 import { FaCog } from 'react-icons/fa';
 import { FaTrash } from 'react-icons/fa';
 import PatientsListPanel from "./PatientsListPanel";
-import { getAppData, setAppData as setAppDataFirestore, getPatients, addPatient, updatePatient, deletePatient as deletePatientFromApi, getRoutineStatus, setRoutineStatus } from "./firebaseApi";
+import { getAppData, setAppData as setAppDataFirestore, getPatients, addPatient, updatePatient, deletePatient as deletePatientFromApi, getRoutineStatus, setRoutineStatus, getRoutineNotes, setRoutineNotes } from "./firebaseApi";
 import mermaidLogo from "./assets/mermaid_logo.png.png";
 
 // משפטים אקראיים לתצוגה כאשר אין תיק נבחר
@@ -1081,6 +1081,26 @@ export default function App() {
   // סטייט למחיקת עץ החלטה
   const [treeToDelete, setTreeToDelete] = useState(null);
 
+  // סטייט להערות משימות שוטפות
+  const [routineNotes, setRoutineNotesState] = useState("");
+
+  // טען הערות משימות שוטפות מה-Firestore
+  useEffect(() => {
+    async function fetchNotes() {
+      const notes = await getRoutineNotes();
+      setRoutineNotesState(notes);
+    }
+    fetchNotes();
+  }, []);
+
+  // שמור הערות משימות שוטפות ב-Firestore בכל שינוי
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setRoutineNotes(routineNotes);
+    }, 600);
+    return () => clearTimeout(timeout);
+  }, [routineNotes]);
+
   if (loading) {
     return (
       <div style={{ 
@@ -1316,7 +1336,35 @@ export default function App() {
               </div>
             )) : null}
           </div>
-          
+          {/* שדה הערות חופשי למשימות שוטפות */}
+          <div style={{ marginTop: 24 }}>
+            <label htmlFor="routine-notes" style={{ color: '#8D7350', fontWeight: 'bold', fontSize: 16, marginBottom: 6, display: 'block' }}>
+              הערות כלליות למשימות שוטפות
+            </label>
+            <textarea
+              id="routine-notes"
+              value={routineNotes}
+              onChange={e => setRoutineNotesState(e.target.value)}
+              placeholder="הוסף כאן הערות כלליות..."
+              style={{
+                width: '100%',
+                minHeight: 70,
+                maxHeight: 200,
+                fontSize: 15,
+                border: '1.5px solid #CBB994',
+                borderRadius: 8,
+                padding: '10px 12px',
+                background: '#FFF8F2',
+                color: '#4E342E',
+                fontFamily: 'inherit',
+                resize: 'vertical',
+                boxSizing: 'border-box',
+                outline: 'none',
+                marginBottom: 0,
+                transition: 'border 0.2s'
+              }}
+            />
+          </div>
         </div>
         {/* פס גרירה ימני */}
         <div

@@ -56,6 +56,23 @@ export async function setRoutineStatus(statusArr) {
   await setDoc(doc(db, "routineStatus", "global"), { routineChecked: statusArr });
 }
 
+// --- הערות משימות שוטפות גלובלי ---
+
+// קריאה של הערות משימות שוטפות גלובלי
+export async function getRoutineNotes() {
+  const docRef = doc(db, "routineNotes", "global");
+  const docSnap = await getDoc(docRef);
+  if (docSnap.exists()) {
+    return docSnap.data().notes || "";
+  }
+  return "";
+}
+
+// עדכון הערות משימות שוטפות גלובלי
+export async function setRoutineNotes(notes) {
+  await setDoc(doc(db, "routineNotes", "global"), { notes });
+}
+
 export async function getAppData() {
   console.log('🔥 getAppData called');
   try {
