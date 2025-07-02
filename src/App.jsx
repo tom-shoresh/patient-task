@@ -453,9 +453,6 @@ export default function App() {
       isArchived: false
     };
     await addPatient(newPatient);
-    const patients = await getPatients();
-    setPatientsList(patients.filter(p => !p.isArchived));
-    setArchivedPatients(patients.filter(p => p.isArchived));
     setForm({ identifier: "" });
   };
 
@@ -633,9 +630,6 @@ export default function App() {
         const updated = { ...patient, population: result.population };
         setPatient(updated);
         await updatePatient(patient.id, updated);
-        const patients = await getPatients();
-        setPatientsList(patients.filter(p => !p.isArchived));
-        setArchivedPatients(patients.filter(p => p.isArchived));
       }
     }
   };
@@ -708,14 +702,6 @@ export default function App() {
       console.log('🌐 Calling updatePatient with ID:', patient.id);
       await updatePatient(patient.id, updated);
       console.log('✅ updatePatient completed');
-      
-      console.log('📥 Fetching updated patients list...');
-      const patients = await getPatients();
-      console.log('📋 Got patients list, length:', patients.length);
-      
-      setPatientsList(patients.filter(p => !p.isArchived));
-      setArchivedPatients(patients.filter(p => p.isArchived));
-      console.log('✅ Patients lists updated');
     } catch (error) {
       console.error('❌ Error in updatePatientTasks:', error);
       throw error;
@@ -730,9 +716,6 @@ export default function App() {
     const patient = patientsList.find(p => p.identifier === identifier);
     if (!patient) return;
     await updatePatient(patient.id, { ...patient, isArchived: true });
-    const patients = await getPatients();
-    setPatientsList(patients.filter(p => !p.isArchived));
-    setArchivedPatients(patients.filter(p => p.isArchived));
     if (patient.identifier === (patient && patient.identifier)) setPatient(null);
   };
 
@@ -740,9 +723,6 @@ export default function App() {
     const patient = archivedPatients.find(p => p.identifier === identifier);
     if (!patient) return;
     await updatePatient(patient.id, { ...patient, isArchived: false });
-    const patients = await getPatients();
-    setPatientsList(patients.filter(p => !p.isArchived));
-    setArchivedPatients(patients.filter(p => p.isArchived));
   };
 
   // --- הוספת סטייט למודאל מחיקה ---
@@ -770,9 +750,6 @@ export default function App() {
         await deletePatientFromApi(p.id);
     }
     }
-    const patients = await getPatients();
-    setPatientsList(patients.filter(p => !p.isArchived));
-    setArchivedPatients(patients.filter(p => p.isArchived));
     setDeleteModal({ open: false, type: '', identifier: null });
   };
   const cancelDelete = () => setDeleteModal({ open: false, type: '', identifier: null });
