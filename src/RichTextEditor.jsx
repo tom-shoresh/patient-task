@@ -84,6 +84,13 @@ const RichTextEditor = ({ value, onChange, placeholder = "כתוב כאן טקס
     }
   }, [editor]);
 
+  // סנכרון תוכן העורך עם value מבחוץ (לסנכרון בזמן אמת)
+  React.useEffect(() => {
+    if (editor && value !== editor.getHTML()) {
+      editor.commands.setContent(value || "");
+    }
+  }, [value, editor]);
+
   const ToolbarButton = ({ onClick, isActive, icon, title }) => (
     <button
       onMouseDown={e => {
