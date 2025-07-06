@@ -1055,22 +1055,27 @@ export default function App() {
 
   // סטייט להערות משימות שוטפות
   const [routineNotes, setRoutineNotesState] = useState("");
+  const routineNotesRef = useRef("");
 
   // טען הערות משימות שוטפות מה-Firestore
   useEffect(() => {
     const unsubscribe = subscribeToRoutineNotes((notes, error) => {
       if (error) return;
       setRoutineNotesState(notes);
+      routineNotesRef.current = notes;
     });
     return () => unsubscribe();
   }, []);
 
-  // שמור הערות משימות שוטפות ב-Firestore בכל שינוי
+  // שמור הערות משימות שוטפות ב-Firestore בכל שינוי (רק אם שונה)
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      setRoutineNotes(routineNotes);
-    }, 600);
-    return () => clearTimeout(timeout);
+    if (routineNotes !== routineNotesRef.current) {
+      const timeout = setTimeout(() => {
+        setRoutineNotes(routineNotes);
+        routineNotesRef.current = routineNotes;
+      }, 600);
+      return () => clearTimeout(timeout);
+    }
   }, [routineNotes]);
 
   // סנכרון אוטומטי של התיק הנבחר עם רשימת התיקים (patientsList)
@@ -1087,22 +1092,27 @@ export default function App() {
 
   // סטייט להערות פוטנציאל הפניה
   const [potentialReferralNotes, setPotentialReferralNotesState] = useState("");
+  const potentialReferralNotesRef = useRef("");
 
   // טען הערות פוטנציאל הפניה מה-Firestore
   useEffect(() => {
     const unsubscribe = subscribeToPotentialReferralNotes((notes, error) => {
       if (error) return;
       setPotentialReferralNotesState(notes);
+      potentialReferralNotesRef.current = notes;
     });
     return () => unsubscribe();
   }, []);
 
-  // שמור הערות פוטנציאל הפניה ב-Firestore בכל שינוי
+  // שמור הערות פוטנציאל הפניה ב-Firestore בכל שינוי (רק אם שונה)
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      setPotentialReferralNotes(potentialReferralNotes);
-    }, 600);
-    return () => clearTimeout(timeout);
+    if (potentialReferralNotes !== potentialReferralNotesRef.current) {
+      const timeout = setTimeout(() => {
+        setPotentialReferralNotes(potentialReferralNotes);
+        potentialReferralNotesRef.current = potentialReferralNotes;
+      }, 600);
+      return () => clearTimeout(timeout);
+    }
   }, [potentialReferralNotes]);
 
   if (loading) {
