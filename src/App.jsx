@@ -5,15 +5,16 @@ import CircleProgress from "./CircleProgress";
 import DecisionTreeEditor from "./DecisionTreeEditor";
 import RoutineTasksEditor from "./RoutineTasksEditor";
 import MainTasksEditor from "./MainTasksEditor";
+import RichTextEditor from "./RichTextEditor";
 import { FaArchive } from 'react-icons/fa';
 import { FaHome } from 'react-icons/fa';
 import { FaCog } from 'react-icons/fa';
 import { FaTrash } from 'react-icons/fa';
 import PatientsListPanel from "./PatientsListPanel";
-import { getAppData, setAppData as setAppDataFirestore, getPatients, addPatient, updatePatient, deletePatient as deletePatientFromApi, getRoutineStatus, setRoutineStatus, getRoutineNotes, setRoutineNotes } from "./firebaseApi";
+import { getAppData, setAppData as setAppDataFirestore, getPatients, addPatient, updatePatient, deletePatient as deletePatientFromApi, getRoutineStatus, setRoutineStatus, getRoutineNotes, setRoutineNotes, getPotentialReferralNotes, setPotentialReferralNotes } from "./firebaseApi";
 import mermaidLogo from "./assets/mermaid_logo.png.png";
 import { subscribeToPatients } from "./firebaseApi";
-import { subscribeToRoutineStatus, subscribeToRoutineNotes } from "./firebaseApi";
+import { subscribeToRoutineStatus, subscribeToRoutineNotes, subscribeToPotentialReferralNotes } from "./firebaseApi";
 
 // משפטים אקראיים לתצוגה כאשר אין תיק נבחר
 const idleQuotes = [
@@ -358,9 +359,14 @@ export default function App() {
   const isValidSelectedTreeId = appData?.decisionTrees && selectedTreeId && appData.decisionTrees[selectedTreeId];
 
   const updateDecisionTree = (updatedTree) => {
-    if (!appData || !isValidSelectedTreeId) return;
+    console.log('🔄 updateDecisionTree called with:', updatedTree);
+    if (!appData || !isValidSelectedTreeId) {
+      console.log('❌ updateDecisionTree: appData או isValidSelectedTreeId לא תקינים');
+      return;
+    }
     let newData = { ...appData };
     newData.decisionTrees = { ...appData.decisionTrees, [selectedTreeId]: updatedTree };
+    console.log('📤 updateDecisionTree: מעדכן appData ו-Firestore עם:', newData);
     setAppData(newData);
     setAppDataFirestore(newData);
   };
@@ -1079,6 +1085,26 @@ export default function App() {
     }
   }, [patientsList, patient]);
 
+  // סטייט להערות פוטנציאל הפניה
+  const [potentialReferralNotes, setPotentialReferralNotesState] = useState("");
+
+  // טען הערות פוטנציאל הפניה מה-Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToPotentialReferralNotes((notes, error) => {
+      if (error) return;
+      setPotentialReferralNotesState(notes);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // שמור הערות פוטנציאל הפניה ב-Firestore בכל שינוי
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setPotentialReferralNotes(potentialReferralNotes);
+    }, 600);
+    return () => clearTimeout(timeout);
+  }, [potentialReferralNotes]);
+
   if (loading) {
     return (
       <div style={{ 
@@ -1315,34 +1341,7 @@ export default function App() {
             )) : null}
           </div>
           {/* שדה הערות חופשי למשימות שוטפות */}
-          <div style={{ marginTop: 24 }}>
-            <label htmlFor="routine-notes" style={{ color: '#8D7350', fontWeight: 'bold', fontSize: 16, marginBottom: 6, display: 'block' }}>
-              הערות כלליות למשימות שוטפות
-            </label>
-            <textarea
-              id="routine-notes"
-              value={routineNotes}
-              onChange={e => setRoutineNotesState(e.target.value)}
-              placeholder="הוסף כאן הערות כלליות..."
-              style={{
-                width: '100%',
-                minHeight: 70,
-                maxHeight: 200,
-                fontSize: 15,
-                border: '1.5px solid #CBB994',
-                borderRadius: 8,
-                padding: '10px 12px',
-                background: '#FFF8F2',
-                color: '#4E342E',
-                fontFamily: 'inherit',
-                resize: 'vertical',
-                boxSizing: 'border-box',
-                outline: 'none',
-                marginBottom: 0,
-                transition: 'border 0.2s'
-              }}
-            />
-          </div>
+
         </div>
         {/* פס גרירה ימני */}
         <div
@@ -1837,35 +1836,42 @@ export default function App() {
                 {patient && (
                   <div style={{ marginBottom: 32 }}>
                     <h3 style={{ color: '#8D7350', fontSize: 20, marginBottom: 10 }}>הערות חופשיות</h3>
-                    <textarea
+                    <RichTextEditor
                       value={notes}
-                      onChange={e => setNotes(e.target.value)}
+                      onChange={setNotes}
                       placeholder="הוסף כאן הערות חופשיות..."
-                      style={{
-                        width: '100%',
-                        minHeight: 80,
-                        maxHeight: 220,
-                        fontSize: 16,
-                        border: '1.5px solid #CBB994',
-                        borderRadius: 8,
-                        padding: '12px 14px',
-                        background: '#FFF8F2',
-                        color: '#4E342E',
-                        fontFamily: 'inherit',
-                        resize: 'vertical',
-                        boxSizing: 'border-box',
-                        outline: 'none',
-                        marginBottom: 0,
-                        transition: 'border 0.2s'
-                      }}
                     />
                   </div>
                 )}
               </div>
             
           ) : (
-            <div style={{ color: '#888', marginTop: 80, fontSize: 22, textAlign: 'center', width: '100%', minHeight: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1.5 }}>
-              {idleQuotes[idleQuoteIdx]}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: 80 }}>
+              <div style={{ color: '#888', marginTop: 80, fontSize: 22, textAlign: 'center', lineHeight: 1.5, marginBottom: 40 }}>
+                {idleQuotes[idleQuoteIdx]}
+              </div>
+              <div style={{ width: '100%', maxWidth: 1200, display: 'flex', gap: 32, justifyContent: 'center', alignItems: 'flex-start', flexWrap: 'wrap', margin: '0 auto' }}>
+                <div style={{ flex: 1, minWidth: 320, maxWidth: 600 }}>
+                  <label htmlFor="routine-notes" style={{ color: '#8D7350', fontWeight: 'bold', fontSize: 18, marginBottom: 8, display: 'block', textAlign: 'center' }}>
+                    פתקים, הערות, תזכורות
+                  </label>
+                  <RichTextEditor
+                    value={routineNotes}
+                    onChange={setRoutineNotesState}
+                    placeholder="כתוב כאן טקסט חופשי..."
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: 320, maxWidth: 600 }}>
+                  <label htmlFor="potential-referral-notes" style={{ color: '#8D7350', fontWeight: 'bold', fontSize: 18, marginBottom: 8, display: 'block', textAlign: 'center' }}>
+                    פוטנציאל הפניה
+                  </label>
+                  <RichTextEditor
+                    value={potentialReferralNotes}
+                    onChange={setPotentialReferralNotesState}
+                    placeholder="כתוב כאן טקסט חופשי..."
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>

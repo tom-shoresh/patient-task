@@ -85,6 +85,34 @@ export async function setRoutineNotes(notes) {
   await setDoc(doc(db, "routineNotes", "global"), { notes });
 }
 
+// --- הערות פוטנציאל הפניה ---
+export async function getPotentialReferralNotes() {
+  const docRef = doc(db, "potentialReferralNotes", "global");
+  const docSnap = await getDoc(docRef);
+  if (docSnap.exists()) {
+    return docSnap.data().notes || "";
+  }
+  return "";
+}
+
+export async function setPotentialReferralNotes(notes) {
+  await setDoc(doc(db, "potentialReferralNotes", "global"), { notes });
+}
+
+export function subscribeToPotentialReferralNotes(callback) {
+  const docRef = doc(db, "potentialReferralNotes", "global");
+  return onSnapshot(docRef, (docSnap) => {
+    if (docSnap.exists()) {
+      callback(docSnap.data().notes || "");
+    } else {
+      callback("");
+    }
+  }, (error) => {
+    console.error('❌ subscribeToPotentialReferralNotes failed:', error);
+    callback(null, error);
+  });
+}
+
 export async function getAppData() {
   console.log('🔥 getAppData called');
   try {
@@ -112,8 +140,10 @@ export async function getAppData() {
 }
 
 export async function setAppData(data) {
+  console.log('🔥 setAppData called with:', data);
   // שמירה: תמיד נשמור decisionTrees כאובייקט
   await setDoc(doc(db, "workflow", "main"), data);
+  console.log('✅ setAppData completed successfully');
 }
 
 // סנכרון בזמן אמת לסטטוס משימות שוטפות

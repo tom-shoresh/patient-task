@@ -49,14 +49,10 @@ function NestedListNode({ node, onEdit, onAdd, onDelete, onAddQuestion, onEditFi
         <button onClick={handleEdit} title={editing ? 'שמור' : 'ערוך'} style={{ fontSize: 16, marginLeft: 2, background: 'none', border: 'none', cursor: 'pointer' }}>
           <FaEdit />
         </button>
-        {!isRoot && (
-          <button onClick={() => {
-            console.log('🗑️ מחיקת אפשרות - path:', path);
-            onDelete(path);
-          }} title="מחק" style={{ fontSize: 16, color: '#c00', marginLeft: 2, background: 'none', border: 'none', cursor: 'pointer' }}>
-            <FaTrash />
-          </button>
-        )}
+        {/* כפתור מחיקה לכל צומת */}
+        <button onClick={() => onDelete(path, node)} title="מחק" style={{ fontSize: 16, color: '#c00', marginLeft: 2, background: 'none', border: 'none', cursor: 'pointer' }}>
+          <FaTrash />
+        </button>
         {isQuestion && (
           <button onClick={() => {
             console.log('➕ הוספת אפשרות - path:', path);
@@ -184,6 +180,46 @@ function updateTreeByPath(tree, path, updater) {
   return tree;
 }
 
+const hasChildren = (node) => {
+  console.log('🔍 hasChildren - node:', node);
+  if (!node) return false;
+  if (Array.isArray(node.options) && node.options.length > 0) {
+    console.log('✅ יש options');
+    return true;
+  }
+  if (node.nextQuestion) {
+    console.log('✅ יש nextQuestion');
+    return true;
+  }
+  if (node.finalTask) {
+    console.log('✅ יש finalTask');
+    return true;
+  }
+  // עבור השורש - בדוק אם יש תוכן כלשהו
+  if (node.question || node.initialQuestion) {
+    console.log('✅ יש question או initialQuestion');
+    return true;
+  }
+  console.log('❌ אין בנים');
+  return false;
+};
+
+function DeleteConfirmModal({ open, onConfirm, onCancel, message }) {
+  if (!open) return null;
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.25)', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', direction: 'rtl'
+    }}>
+      <div style={{ background: '#fff', borderRadius: 8, padding: 24, minWidth: 280, boxShadow: '0 2px 12px #0002', textAlign: 'center' }}>
+        <div style={{ fontSize: 18, marginBottom: 18 }}>{message}</div>
+        <button onClick={onConfirm} style={{ background: '#c00', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 18px', marginLeft: 8, fontSize: 16 }}>מחק</button>
+        <button onClick={onCancel} style={{ background: '#eee', color: '#333', border: 'none', borderRadius: 4, padding: '6px 18px', fontSize: 16 }}>ביטול</button>
+      </div>
+    </div>
+  );
+}
+
 const DecisionTreeEditor = ({ decisionTree, mainTasks, onUpdate }) => {
   if (!decisionTree || typeof decisionTree !== 'object') {
     return <div style={{color: '#c00', textAlign: 'center', margin: 30}}>שגיאה: עץ ההחלטה לא תקין או לא נטען</div>;
@@ -191,6 +227,7 @@ const DecisionTreeEditor = ({ decisionTree, mainTasks, onUpdate }) => {
   const [tree, setTree] = useState(decisionTree);
   const [initialQuestion, setInitialQuestion] = useState(decisionTree.initialQuestion || '');
   const [editingInitial, setEditingInitial] = useState(false);
+  const [deleteModal, setDeleteModal] = useState({ open: false, path: null, node: null, isRoot: false });
 
   // --- סנכרון state עם props ---
   useEffect(() => {
@@ -202,6 +239,17 @@ const DecisionTreeEditor = ({ decisionTree, mainTasks, onUpdate }) => {
 
   const handleEdit = (path, newValue) => {
     console.log('📝 handleEdit - path:', path, 'ערך חדש:', newValue);
+    
+    // טיפול מיוחד בשאלה הראשית (path ריק)
+    if (path.length === 0) {
+      console.log('✅ מעדכן שאלה ראשית ל:', newValue);
+      const newTree = { ...tree, initialQuestion: newValue };
+      setTree(newTree);
+      onUpdate && onUpdate(newTree);
+      return;
+    }
+    
+    // טיפול בשאר השאלות (path לא ריק)
     const newTree = updateTreeByPath(tree, path, (node) => {
       if (node.question !== undefined) {
         console.log('✅ מעדכן question ל:', newValue);
@@ -242,9 +290,53 @@ const DecisionTreeEditor = ({ decisionTree, mainTasks, onUpdate }) => {
     onUpdate && onUpdate(newTree);
   };
 
-  const handleDelete = (path) => {
-    console.log('🗑️ handleDelete - path:', path);
-    if (path[path.length - 2] === 'options') {
+  const handleDeleteRequest = (path, node, isRoot = false) => {
+    console.log('🗑️ handleDeleteRequest - path:', path, 'node:', node, 'isRoot:', isRoot);
+    // בדוק אם יש בנים
+    if (hasChildren(node)) {
+      console.log('⚠️ יש בנים - מציג אזהרה');
+      setDeleteModal({ open: true, path, node, isRoot });
+    } else {
+      console.log('✅ אין בנים - מוחק מייד');
+      handleDelete(path, isRoot);
+    }
+  };
+
+  const handleDelete = (path, isRoot = false) => {
+    setDeleteModal({ open: false, path: null, node: null, isRoot: false });
+    if (isRoot) {
+      // מחיקת השורש: נקה את כל העץ (למעט הכותרת)
+      const newTree = { 
+        ...tree, 
+        initialQuestion: '', 
+        options: []
+        // לא נמחק את title כי הוא חשוב לזיהוי העץ
+      };
+      console.log('🗑️ מחיקת שורש - עץ חדש:', newTree);
+      setTree(newTree);
+      console.log('📤 קורא ל-onUpdate עם העץ החדש');
+      onUpdate && onUpdate(newTree);
+      return;
+    }
+    
+
+    
+    // מחיקת שאלה (nextQuestion) - מוחק את כל הסעיף כולל הבנים
+    if (path.length > 0 && path[path.length - 1] === 'nextQuestion') {
+      const parentPath = path.slice(0, -1);
+      console.log('🗑️ מוחק שאלה וכל הבנים שלה מהנתיב:', parentPath);
+      const newTree = updateTreeByPath(tree, parentPath, (node) => {
+        const { nextQuestion, ...nodeWithoutNextQuestion } = node;
+        console.log('✅ הסרתי nextQuestion וכל הבנים שלה');
+        return nodeWithoutNextQuestion;
+      });
+      setTree(newTree);
+      onUpdate && onUpdate(newTree);
+      return;
+    }
+    
+    // מחיקת אפשרות ממערך options
+    if (path.length >= 2 && path[path.length - 2] === 'options') {
       const idx = parseInt(path[path.length - 1]);
       const parentPath = path.slice(0, -2);
       console.log('🗑️ מוחק אפשרות באינדקס:', idx, 'מהנתיב:', parentPath);
@@ -255,7 +347,24 @@ const DecisionTreeEditor = ({ decisionTree, mainTasks, onUpdate }) => {
       });
       setTree(newTree);
       onUpdate && onUpdate(newTree);
+      return;
     }
+    
+    // מחיקת תשובה סופית (finalTask) - מוחק רק את המשימה הסופית
+    if (path.length > 0 && path[path.length - 1] === 'finalTask') {
+      const parentPath = path.slice(0, -1);
+      console.log('🗑️ מוחק משימה סופית מהנתיב:', parentPath);
+      const newTree = updateTreeByPath(tree, parentPath, (node) => {
+        const { finalTask, ...nodeWithoutFinalTask } = node;
+        console.log('✅ הסרתי finalTask');
+        return nodeWithoutFinalTask;
+      });
+      setTree(newTree);
+      onUpdate && onUpdate(newTree);
+      return;
+    }
+    
+    console.log('⚠️ לא ניתן לזהות סוג המחיקה עבור path:', path);
   };
 
   const handleEditFinalTask = (path, newFinalTask) => {
@@ -283,27 +392,59 @@ const DecisionTreeEditor = ({ decisionTree, mainTasks, onUpdate }) => {
 
   const handleInitialEdit = () => {
     if (editingInitial) {
+      // כאשר העריכה מסתיימת - שמור את השינוי
       const newTree = { ...tree, initialQuestion };
       console.log('handleInitialEdit: שולח עץ חדש ל-onUpdate:', newTree);
       setTree(newTree);
       onUpdate && onUpdate(newTree);
+    } else {
+      // כאשר מתחילים עריכה - סנכרן את ה-state עם ה-tree
+      setInitialQuestion(tree.initialQuestion || '');
     }
     setEditingInitial(!editingInitial);
   };
 
   return (
     <div style={{ background: '#fafafa', borderRadius: 8, border: '1px solid #E0E0E0', padding: 16, fontFamily: 'inherit', direction: 'rtl' }}>
+      <DeleteConfirmModal
+        open={deleteModal.open}
+        message={deleteModal.isRoot ? 'מחיקת השורש תמחק את כל העץ. האם להמשיך?' : 'לצומת זה יש בנים. האם למחוק אותו ואת כל תת-העץ?'}
+        onConfirm={() => handleDelete(deleteModal.path, deleteModal.isRoot)}
+        onCancel={() => setDeleteModal({ open: false, path: null, node: null, isRoot: false })}
+      />
       <div style={{ marginBottom: 12 }}>
         <span style={{ fontWeight: 'bold', fontSize: 20, color: '#8D7350' }}>
           {`עץ החלטות - ${decisionTree.title || ''}`}
         </span>
+        {/* כפתור מחיקת שורש */}
+        <button 
+          onClick={() => {
+            console.log('🗑️ לחיצה על כפתור מחיקת שורש');
+            handleDeleteRequest([], { options: tree.options || [], initialQuestion: tree.initialQuestion }, true);
+          }} 
+          style={{ 
+            float: 'left', 
+            color: '#c00', 
+            background: 'none', 
+            border: 'none', 
+            fontSize: 18, 
+            cursor: 'pointer',
+            marginLeft: 8,
+            padding: '4px 8px',
+            borderRadius: 4
+          }} 
+          title="מחק עץ"
+        >
+          <FaTrash /> מחק עץ
+        </button>
       </div>
       <ul style={{ listStyleType: 'disc', paddingRight: 0, marginRight: 0 }}>
         <NestedListNode
           node={{ question: tree.initialQuestion, options: tree.options }}
           onEdit={handleEdit}
           onAdd={handleAdd}
-          onDelete={path => {/* לא לאפשר מחיקת השורש */}}
+          // העבר isRoot=true רק לשורש
+          onDelete={(path, node) => handleDeleteRequest(path, node, path.length === 0)}
           onAddQuestion={handleAddQuestion}
           onEditFinalTask={handleEditFinalTask}
           mainTasks={mainTasks}
